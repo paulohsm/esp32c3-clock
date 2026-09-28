@@ -12,6 +12,10 @@ constexpr uint8_t VOLUME_MAX       = 5;
 constexpr uint8_t CLOCK_ICON_COUNT = 3;
 constexpr size_t  NAME_LEN         = 24;
 constexpr size_t  PLACE_LEN        = 32;
+constexpr size_t  WELCOME_LEN      = 64;
+
+// Shown by the power-on introduction.
+constexpr const char* APP_URL = "paulohsm.github.io/esp32c3-clock";
 
 // Quote selection bits (see feeds.h for codes): USD, EUR, GBP, BTC, ETH.
 constexpr uint8_t QUOTES_ALL = 0x1F;
@@ -53,6 +57,10 @@ struct Settings {
   uint16_t autoEvery   = 60;              // carousel period in seconds (0 = off)
   uint8_t  autoFor     = 2;               // seconds each carousel screen stays
   uint8_t  autoScreens = SB_DATE;         // screens shown by the carousel
+
+  // Power-on introduction: greeting, app address, weather, quotes, date.
+  bool     intro       = true;
+  char     welcome[WELCOME_LEN] = "";     // custom greeting ("" = automatic)
 };
 
 extern Settings s;

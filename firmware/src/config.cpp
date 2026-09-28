@@ -34,6 +34,7 @@ void clamp() {
     s.lon = -38.5267f;
   }
   s.place[PLACE_LEN - 1] = '\0';
+  s.welcome[WELCOME_LEN - 1] = '\0';
   s.name[NAME_LEN - 1] = '\0';
   if (s.name[0] == '\0') strlcpy(s.name, "Clock", NAME_LEN);
 }
@@ -65,6 +66,8 @@ void load() {
   s.autoEvery    = prefs.getUShort("autoev", 60);
   s.autoFor      = prefs.getUChar("autofor", 2);
   s.autoScreens  = prefs.getUChar("autoscr", SB_DATE);
+  s.intro        = prefs.getBool("intro", true);
+  if (prefs.isKey("welcome")) prefs.getString("welcome", s.welcome, WELCOME_LEN);
   prefs.end();
   clamp();
 }
@@ -96,6 +99,8 @@ void save() {
   prefs.putUShort("autoev", s.autoEvery);
   prefs.putUChar("autofor", s.autoFor);
   prefs.putUChar("autoscr", s.autoScreens);
+  prefs.putBool("intro", s.intro);
+  prefs.putString("welcome", s.welcome);
   prefs.end();
 }
 
@@ -126,6 +131,8 @@ void toJson(JsonObject o) {
   o["autoEvery"]    = s.autoEvery;
   o["autoFor"]      = s.autoFor;
   o["autoScreens"]  = s.autoScreens;
+  o["intro"]        = s.intro;
+  o["welcome"]      = s.welcome;
 }
 
 template <typename T>
@@ -153,6 +160,13 @@ bool fromJson(JsonObjectConst o) {
       changed = true;
     }
   }
+  if (o["welcome"].is<const char*>()) {  // may be empty (= automatic greeting)
+    const char* w = o["welcome"];
+    if (strcmp(w, s.welcome) != 0) {
+      strlcpy(s.welcome, w, WELCOME_LEN);
+      changed = true;
+    }
+  }
   changed |= setIf(o, "brightness", s.brightness);
   changed |= setIf(o, "rotated", s.rotated);
   changed |= setIf(o, "hourlyBeep", s.hourlyBeep);
@@ -176,6 +190,7 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "autoEvery", s.autoEvery);
   changed |= setIf(o, "autoFor", s.autoFor);
   changed |= setIf(o, "autoScreens", s.autoScreens);
+  changed |= setIf(o, "intro", s.intro);
   clamp();
   return changed;
 }

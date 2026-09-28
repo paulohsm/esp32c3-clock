@@ -101,7 +101,7 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 
 `days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
 
-**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–9: classic, ding-dong, doorbell, Big Ben, cuckoo, microwave, notification, coin, soft, bird), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes), `rainAlert`, `rainHour`, `anim` (rolling digits, sliding screens, seconds dot on the dial), `scrollSpeed` (1–5), `autoEvery` (carousel period in seconds, 0 = off), `autoFor` (seconds per carousel screen), `autoScreens` (same bits as `screens`, long date excluded).
+**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–9: classic, ding-dong, doorbell, Big Ben, cuckoo, microwave, notification, coin, soft, bird), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes), `rainAlert`, `rainHour`, `anim` (rolling digits, sliding screens, seconds dot on the dial), `scrollSpeed` (1–5), `autoEvery` (carousel period in seconds, 0 = off), `autoFor` (seconds per carousel screen), `autoScreens` (same bits as `screens`, long date excluded), `intro` (power-on introduction: greeting, app address, weather, quotes, date), `welcome` (custom greeting; empty = automatic "Bom dia!" plus a weather tip).
 
 ## Internet data
 
@@ -149,7 +149,7 @@ cd ~/Projetos/esp32c3-clock && python3 tools/gen_icons.py
 
 ## Serial commands
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `intro`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `teste`.
 
 ## MQTT credentials (HiveMQ)
 

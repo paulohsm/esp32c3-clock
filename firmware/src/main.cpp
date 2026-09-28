@@ -23,7 +23,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.8.0"
+#define FW_VERSION "0.9.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -88,11 +88,19 @@ static bool     weatherDue    = true;
 
 // Carousel: every autoEvery seconds, show the chosen screens for autoFor seconds each.
 static bool     carouselOn    = false;
-static uint8_t  carouselNext  = 0;      // next candidate screen to show
+static uint8_t  carouselSeq[16];        // screens to show, in order
+static uint8_t  carouselLen   = 0;
+static uint8_t  carouselPos   = 0;      // next position in carouselSeq
 static int32_t  lastCarouselSlot = -1;  // time slot that already triggered
 static uint8_t  carouselMask  = 0;      // screens of the running carousel
 static uint32_t carouselDurMs = 2000;   // time per screen of the running carousel
 static constexpr uint32_t SHOW_MS = 6000;  // "show now" from the app: time per screen
+
+// Power-on introduction: greeting → app address → weather, rain, quotes, date → clock.
+enum IntroStep : uint8_t { INTRO_WAIT, INTRO_GREETING, INTRO_URL, INTRO_DATA, INTRO_DONE };
+static uint8_t  introStep = INTRO_WAIT;
+static constexpr uint32_t INTRO_MAX_WAIT_MS = 25000;  // wait this long for the weather
+static constexpr uint32_t INTRO_SCREEN_MS   = 3000;
 static bool     quotesDue     = true;
 
 // ------------------------------------------------------------- helpers
@@ -360,13 +368,97 @@ static bool inCarousel(uint8_t s) {
          screenHasData(s);
 }
 
-static void startCarousel(uint8_t mask, uint32_t durMs) {
-  carouselMask = mask;
+// Carousel over an explicit list of screens (those without data are skipped).
+static void startCarouselSeq(const uint8_t* order, uint8_t n, uint32_t durMs) {
+  carouselLen = 0;
+  for (uint8_t i = 0; i < n && carouselLen < sizeof(carouselSeq); i++) {
+    if (order[i] != SCR_CLOCK && order[i] != SCR_LONGDATE && screenHasData(order[i])) {
+      carouselSeq[carouselLen++] = order[i];
+    }
+  }
+  carouselPos = 0;
   carouselDurMs = durMs;
-  carouselNext = SCR_CLOCK + 1;
-  carouselOn = true;
+  carouselOn = carouselLen > 0;
   screenSince = millis() - durMs;  // show the first screen right away
 }
+
+// Carousel over the screens selected by a ScreenBit mask, in screen order.
+static void startCarousel(uint8_t mask, uint32_t durMs) {
+  carouselMask = mask;
+  uint8_t order[SCR_COUNT];
+  uint8_t n = 0;
+  for (uint8_t c = SCR_CLOCK + 1; c < SCR_COUNT; c++) {
+    if (inCarousel(c)) order[n++] = c;
+  }
+  startCarouselSeq(order, n, durMs);
+}
+
+// ---------------------------------------------------------- introduction
+
+// "Bom dia!" + a tip from today's weather, or the user's own message.
+static void buildGreeting(char* out, size_t len, const tm& t) {
+  if (cfg::s.welcome[0]) {
+    strlcpy(out, cfg::s.welcome, len);
+    return;
+  }
+  const char* hello = (t.tm_hour >= 5 && t.tm_hour < 12) ? "Bom dia!"
+                      : (t.tm_hour >= 12 && t.tm_hour < 18) ? "Boa tarde!"
+                                                            : "Boa noite!";
+  const auto& w = feeds::weather;
+  if (!w.valid) {
+    strlcpy(out, hello, len);
+  } else if (w.rainDay >= 60) {
+    snprintf(out, len, "%s Leve guarda-chuva: %u%% de chance de chuva hoje.", hello, w.rainDay);
+  } else if (w.uvMax >= 8 && t.tm_hour < 16) {
+    snprintf(out, len, "%s UV muito alto hoje (%d): use protetor solar.", hello,
+             (int)lroundf(w.uvMax));
+  } else if (w.tMax >= 33) {
+    snprintf(out, len, "%s Dia quente, maxima de %d graus: beba agua.", hello,
+             (int)lroundf(w.tMax));
+  } else {
+    snprintf(out, len, "%s Hoje: minima de %d e maxima de %d graus.", hello,
+             (int)lroundf(w.tMin), (int)lroundf(w.tMax));
+  }
+}
+
+static void runIntro(bool ok, const tm& t) {
+  if (introStep == INTRO_DONE) return;
+  if (!cfg::s.intro || emergencyActive || alarmActive) {
+    introStep = INTRO_DONE;
+    return;
+  }
+  static char txt[160];
+  switch (introStep) {
+    case INTRO_WAIT:
+      if (ok && !overlay && (feeds::weather.valid || millis() > INTRO_MAX_WAIT_MS)) {
+        buildGreeting(txt, sizeof(txt), t);
+        bool day = t.tm_hour >= 6 && t.tm_hour < 18;
+        showMessage(txt, day ? icons::A_SUN : icons::A_MOON, 1);
+        introStep = INTRO_GREETING;
+      }
+      break;
+    case INTRO_GREETING:
+      if (!overlay) {
+        snprintf(txt, sizeof(txt), "Controle pelo celular: %s", cfg::APP_URL);
+        showMessage(txt, icons::A_WIFI, 1);
+        introStep = INTRO_URL;
+      }
+      break;
+    case INTRO_URL:
+      if (!overlay) {
+        static const uint8_t ORDER[] = {SCR_WEATHER, SCR_RAIN, SCR_QUOTE0, SCR_QUOTE0 + 1,
+                                        SCR_QUOTE0 + 2, SCR_QUOTE0 + 3, SCR_QUOTE0 + 4,
+                                        SCR_DATE};
+        startCarouselSeq(ORDER, sizeof(ORDER), INTRO_SCREEN_MS);
+        introStep = INTRO_DATA;
+      }
+      break;
+    case INTRO_DATA:
+      if (!carouselOn) introStep = INTRO_DONE;
+      break;
+  }
+}
+
 
 static uint8_t nextScreen() {
   for (uint8_t k = 1; k <= SCR_COUNT; k++) {
@@ -381,6 +473,7 @@ static void onClick() {
   sound::click();
   if (emergencyActive) { stopEmergency("touch"); sound::confirm(); return; }
   if (alarmActive) { stopAlarm(); return; }
+  introStep = INTRO_DONE;  // a touch skips the power-on introduction
   if (overlay) {  // a touch dismisses the message
     overlay = false;
     goToScreen(SCR_CLOCK);
@@ -793,6 +886,7 @@ static void printHelp() {
       "  speed <1-5>         scroll speed [velocidade]\n"
       "  auto <sec> [dur]    carousel every <sec> seconds (0 = off), <dur> s per screen\n"
       "  msg <text>          scroll a message\n"
+      "  intro               replay the power-on introduction [apresentacao]\n"
       "  alert <sec> <text>  emergency alert (touch to dismiss); 'alert 0' stops it [alerta]\n"
       "  test                play the hourly chime [teste]\n"
       "  wifireset           forget Wi-Fi and reboot into the setup portal"));
@@ -816,6 +910,7 @@ static void runCommand(String line) {
   else if (cmd == "animacao") cmd = "anim";
   else if (cmd == "velocidade") cmd = "speed";
   else if (cmd == "alerta") cmd = "alert";
+  else if (cmd == "apresentacao") cmd = "intro";
 
   if (cmd == "help" || cmd == "?") { printHelp(); return; }
   if (cmd == "info") { printSettings(); return; }
@@ -828,6 +923,7 @@ static void runCommand(String line) {
     showMessage(msgBuf, icons::A_ENVELOPE);
     return;
   }
+  if (cmd == "intro") { introStep = INTRO_WAIT; return; }
   if (cmd == "alert") {
     int sp2 = arg.indexOf(' ');
     long sec = (sp2 < 0 ? arg : arg.substring(0, sp2)).toInt();
@@ -1022,9 +1118,9 @@ void loop() {
     if (millis() - screenSince >= carouselDurMs) {
       // Next carousel screen, or back to the clock after the last one.
       uint8_t s = SCR_CLOCK;
-      while (carouselNext < SCR_COUNT) {
-        uint8_t c = carouselNext++;
-        if (inCarousel(c)) { s = c; break; }
+      while (carouselPos < carouselLen) {
+        uint8_t c = carouselSeq[carouselPos++];
+        if (screenHasData(c)) { s = c; break; }
       }
       if (s == SCR_CLOCK) carouselOn = false;
       goToScreen(s);
@@ -1048,9 +1144,12 @@ void loop() {
     Serial.println("Time synchronized (NTP).");
   }
 
+  runIntro(ok, t);
+
   // Carousel trigger: in the middle of each period (e.g. at :30 of every minute),
   // so it never covers the moment the minute changes.
-  if (ok && cfg::s.autoEvery && screen == SCR_CLOCK && !overlay && !alarmActive &&
+  if (ok && cfg::s.autoEvery && introStep == INTRO_DONE && screen == SCR_CLOCK && !overlay &&
+      !alarmActive &&
       !display::isScrolling()) {
     int32_t secOfDay = t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec;
     int32_t slot = secOfDay / cfg::s.autoEvery;
