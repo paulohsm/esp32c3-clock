@@ -35,6 +35,8 @@ void clamp() {
   }
   s.place[PLACE_LEN - 1] = '\0';
   s.welcome[WELCOME_LEN - 1] = '\0';
+  if (s.morningHour > 23) s.morningHour = 7;
+  if (s.morningMin > 59) s.morningMin = 0;
   s.name[NAME_LEN - 1] = '\0';
   if (s.name[0] == '\0') strlcpy(s.name, "Clock", NAME_LEN);
 }
@@ -68,6 +70,9 @@ void load() {
   s.autoScreens  = prefs.getUChar("autoscr", SB_DATE);
   s.intro        = prefs.getBool("intro", true);
   if (prefs.isKey("welcome")) prefs.getString("welcome", s.welcome, WELCOME_LEN);
+  s.morning      = prefs.getBool("morning", true);
+  s.morningHour  = prefs.getUChar("mornh", 7);
+  s.morningMin   = prefs.getUChar("mornm", 0);
   prefs.end();
   clamp();
 }
@@ -101,6 +106,9 @@ void save() {
   prefs.putUChar("autoscr", s.autoScreens);
   prefs.putBool("intro", s.intro);
   prefs.putString("welcome", s.welcome);
+  prefs.putBool("morning", s.morning);
+  prefs.putUChar("mornh", s.morningHour);
+  prefs.putUChar("mornm", s.morningMin);
   prefs.end();
 }
 
@@ -133,6 +141,9 @@ void toJson(JsonObject o) {
   o["autoScreens"]  = s.autoScreens;
   o["intro"]        = s.intro;
   o["welcome"]      = s.welcome;
+  o["morning"]      = s.morning;
+  o["morningHour"]  = s.morningHour;
+  o["morningMin"]   = s.morningMin;
 }
 
 template <typename T>
@@ -191,6 +202,9 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "autoFor", s.autoFor);
   changed |= setIf(o, "autoScreens", s.autoScreens);
   changed |= setIf(o, "intro", s.intro);
+  changed |= setIf(o, "morning", s.morning);
+  changed |= setIf(o, "morningHour", s.morningHour);
+  changed |= setIf(o, "morningMin", s.morningMin);
   clamp();
   return changed;
 }

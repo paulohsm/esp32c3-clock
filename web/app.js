@@ -295,6 +295,9 @@ function renderConfig(c) {
       cb.checked = (mask >> Number(cb.dataset.bit)) & 1;
     }
   }
+  if (c.morningHour != null && document.activeElement !== $('#morningTime')) {
+    $('#morningTime').value = `${String(c.morningHour).padStart(2, '0')}:${String(c.morningMin).padStart(2, '0')}`;
+  }
   $('#placeName').textContent = c.place || '—';
   $('#placeCoords').textContent = c.lat != null ? `${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}` : '';
 }
@@ -562,6 +565,10 @@ function wire() {
     for (const cb of group.querySelectorAll('input[data-bit]')) cb.addEventListener('change', () => onMaskChange(group));
   }
   $('#gpsBtn').addEventListener('click', useGps);
+  $('#morningTime').addEventListener('change', () => {
+    const [h, m] = $('#morningTime').value.split(':').map(Number);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) publish('config/set', { morningHour: h, morningMin: m });
+  });
   $('#testBeep').addEventListener('click', () => publish('cmd/beep', { timbre: Number($('#cfgTimbre').value) }));
   $('#syncBtn').addEventListener('click', () => publish('cmd/sync', ''));
   $('#rebootBtn').addEventListener('click', () => { if (confirm('Reiniciar o relógio?')) publish('cmd/reboot', ''); });

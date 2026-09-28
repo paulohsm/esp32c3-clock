@@ -1,5 +1,5 @@
 // Service worker: keeps the app shell available offline and makes it installable.
-const CACHE = 'esp32c3-clock-v8';
+const CACHE = 'esp32c3-clock-v9';
 const SHELL = [
   './',
   'index.html',

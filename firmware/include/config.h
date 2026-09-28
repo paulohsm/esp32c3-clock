@@ -61,6 +61,11 @@ struct Settings {
   // Power-on introduction: greeting, app address, weather, quotes, date.
   bool     intro       = true;
   char     welcome[WELCOME_LEN] = "";     // custom greeting ("" = automatic)
+
+  // Daily "good morning": the same sequence every day at a set time.
+  bool     morning     = true;
+  uint8_t  morningHour = 7;
+  uint8_t  morningMin  = 0;
 };
 
 extern Settings s;

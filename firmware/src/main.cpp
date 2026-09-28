@@ -23,7 +23,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.9.0"
+#define FW_VERSION "0.9.1"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -99,6 +99,7 @@ static constexpr uint32_t SHOW_MS = 6000;  // "show now" from the app: time per 
 // Power-on introduction: greeting → app address → weather, rain, quotes, date → clock.
 enum IntroStep : uint8_t { INTRO_WAIT, INTRO_GREETING, INTRO_URL, INTRO_DATA, INTRO_DONE };
 static uint8_t  introStep = INTRO_WAIT;
+static bool     introForced = false;  // daily "good morning": runs even if the power-on intro is off
 static constexpr uint32_t INTRO_MAX_WAIT_MS = 25000;  // wait this long for the weather
 static constexpr uint32_t INTRO_SCREEN_MS   = 3000;
 static bool     quotesDue     = true;
@@ -423,8 +424,9 @@ static void buildGreeting(char* out, size_t len, const tm& t) {
 
 static void runIntro(bool ok, const tm& t) {
   if (introStep == INTRO_DONE) return;
-  if (!cfg::s.intro || emergencyActive || alarmActive) {
+  if ((!cfg::s.intro && !introForced) || emergencyActive || alarmActive) {
     introStep = INTRO_DONE;
+    introForced = false;
     return;
   }
   static char txt[160];
@@ -454,7 +456,10 @@ static void runIntro(bool ok, const tm& t) {
       }
       break;
     case INTRO_DATA:
-      if (!carouselOn) introStep = INTRO_DONE;
+      if (!carouselOn) {
+        introStep = INTRO_DONE;
+        introForced = false;
+      }
       break;
   }
 }
@@ -1184,9 +1189,20 @@ void loop() {
       lastMinute = t.tm_min;
       if (sched::check(t, onScheduleFire)) publishSchedules();
 
+      // Daily "good morning": chime, then the introduction sequence.
+      bool morningNow = cfg::s.morning && t.tm_hour == cfg::s.morningHour &&
+                        t.tm_min == cfg::s.morningMin && !alarmActive && !emergencyActive;
+      if (morningNow) {
+        sound::chime();
+        carouselOn = false;
+        introForced = true;
+        introStep = INTRO_WAIT;
+      }
+
       // Morning rain warning.
       const auto& w = feeds::weather;
-      if (cfg::s.rainAlert && t.tm_hour == cfg::s.rainHour && t.tm_min == 0 && w.valid &&
+      if (!morningNow && cfg::s.rainAlert && t.tm_hour == cfg::s.rainHour && t.tm_min == 0 &&
+          w.valid &&
           w.rainDay >= RAIN_ALERT_PCT && !alarmActive && !emergencyActive) {
         static char txt[64];
         snprintf(txt, sizeof(txt), "Leve guarda-chuva! Chuva %u%% hoje", w.rainDay);
