@@ -23,7 +23,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.7.0"
+#define FW_VERSION "0.7.1"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)

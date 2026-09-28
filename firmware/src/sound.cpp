@@ -1,4 +1,5 @@
 #include "sound.h"
+#include <Ticker.h>
 #include <esp_arduino_version.h>
 #include "config.h"
 #include "pins.h"
@@ -29,10 +30,14 @@ Note s_click[] = {{2000, 25}, {0, 0}};
 // Volume = pulse width (8-bit duty). 128 = 50% = loudest.
 const uint8_t DUTY[cfg::VOLUME_MAX] = {3, 8, 20, 50, 128};
 
-const Note* seq = nullptr;
+// The sequence advances on a timer (Ticker), not in loop(): a note must
+// end on time even while the main program is blocked (Wi-Fi, TLS, HTTP), or the
+// buzzer would stay stuck on one continuous tone.
+Ticker noteTimer;
+const Note* volatile seq = nullptr;
 bool loud = false;  // play at full volume regardless of the setting (emergency)
-uint8_t idx = 0;
-uint32_t noteStart = 0;
+volatile uint8_t idx = 0;
+volatile uint32_t noteStart = 0;
 
 #if ESP_ARDUINO_VERSION_MAJOR < 3
 constexpr uint8_t LEDC_CH = 0;
@@ -51,12 +56,29 @@ void output(uint16_t freq) {
 #endif
 }
 
+// Called every 5 ms by the timer task: ends the note when its time is up.
+void tick() {
+  const Note* s = seq;
+  if (!s) return;
+  if (millis() - noteStart < s[idx].ms) return;
+  uint8_t next = idx + 1;
+  if (s[next].freq == 0 && s[next].ms == 0) {  // end of the sequence
+    output(0);
+    seq = nullptr;
+    return;
+  }
+  idx = next;
+  noteStart = millis();
+  output(s[next].freq);
+}
+
 void start(const Note* s, bool atFullVolume = false) {
+  seq = nullptr;  // pause the timer's work while we switch sequences
   loud = atFullVolume;
-  seq = s;
   idx = 0;
   noteStart = millis();
-  output(seq[0].freq);
+  output(s[0].freq);
+  seq = s;
 }
 
 }  // namespace
@@ -71,20 +93,11 @@ void begin() {
   ledcAttachPin(PIN_BUZZER, LEDC_CH);
 #endif
   output(0);
+  noteTimer.attach_ms(5, tick);
 }
 
-void update() {
-  if (!seq) return;
-  if (millis() - noteStart < seq[idx].ms) return;
-  idx++;
-  if (seq[idx].freq == 0 && seq[idx].ms == 0) {  // end
-    output(0);
-    seq = nullptr;
-    return;
-  }
-  noteStart = millis();
-  output(seq[idx].freq);
-}
+// Kept for compatibility; the timer does the work now.
+void update() {}
 
 void click() {
   s_click[0].freq = TIMBRES[cfg::s.timbre][0].freq;

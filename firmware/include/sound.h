@@ -1,11 +1,12 @@
 #pragma once
 #include <Arduino.h>
 
-// Passive buzzer driven by PWM (LEDC), non-blocking.
+// Passive buzzer driven by PWM (LEDC). Sequences run on a timer, so they never
+// get stuck on a tone while the main loop is busy.
 namespace sound {
 
 void begin();
-void update();                  // call on every loop()
+void update();                  // no-op (kept so existing calls still compile)
 
 void click();                   // short touch feedback
 void chime();                   // hourly chime using the configured timbre
