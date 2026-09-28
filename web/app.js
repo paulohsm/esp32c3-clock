@@ -305,6 +305,8 @@ function renderConfig(c) {
   if (c.morningHour != null && document.activeElement !== $('#morningTime')) {
     $('#morningTime').value = `${String(c.morningHour).padStart(2, '0')}:${String(c.morningMin).padStart(2, '0')}`;
   }
+  $('#dialOptions').hidden = Number(c.clockIcon) !== 0;
+  $('#blinkOption').hidden = Number(c.fillStyle) !== 0;
   $('#placeName').textContent = c.place || '—';
   $('#placeCoords').textContent = c.lat != null ? `${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}` : '';
 }
@@ -566,6 +568,9 @@ function onConfigChange(e) {
   else value = input.value.trim();
   if (key === 'name' && !value) return;
   publish('config/set', { [key]: value });
+  // Show only the options that apply, right away (the clock confirms a moment later).
+  if (key === 'clockIcon') $('#dialOptions').hidden = value !== 0;
+  if (key === 'fillStyle') $('#blinkOption').hidden = value !== 0;
 }
 
 function addSchedule(e) {

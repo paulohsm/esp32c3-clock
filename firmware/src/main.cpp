@@ -24,7 +24,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -705,38 +705,106 @@ static int centerX(const char* text) {
   return display::CONTENT_X + (display::CONTENT_W - display::fbTextWidth(text)) / 2;
 }
 
-// Clock icon: 0 = day pie (fraction of 24 h, midnight at the top, clockwise),
-// 1 = static clock face, 2 = current quarter of the day.
-static void drawClockIcon(const tm& t) {
-  if (cfg::s.clockIcon == 1) {
-    display::fbIcon(0, icons::CLOCK);
-    return;
+// ------------------------------------------------------------- clock icon
+// The dial is a 6x6 ring (16 LEDs) around a 4x4 inside (16 LEDs).
+static const uint8_t RING[16][2] = {{4, 1}, {5, 1}, {6, 2}, {6, 3}, {6, 4}, {6, 5},
+                                    {5, 6}, {4, 6}, {3, 6}, {2, 6}, {1, 5}, {1, 4},
+                                    {1, 3}, {1, 2}, {2, 1}, {3, 1}};  // clockwise from 12
+// Zigzag fill order: bottom row left→right, next row right→left, and so on.
+static const uint8_t ZIGZAG[16][2] = {{2, 5}, {3, 5}, {4, 5}, {5, 5}, {5, 4}, {4, 4},
+                                      {3, 4}, {2, 4}, {2, 3}, {3, 3}, {4, 3}, {5, 3},
+                                      {5, 2}, {4, 2}, {3, 2}, {2, 2}};
+
+static void drawRing(const tm& t) {
+  uint32_t step = millis() / 125;  // 8 steps per second
+  for (uint8_t i = 0; i < 16; i++) {
+    bool on = true;
+    if (cfg::s.anim) {
+      switch (cfg::s.ringStyle) {
+        case 0: on = ((i - step) & 15) >= 8; break;     // snake: half ring chasing, 1 lap / 2 s
+        case 1: on = ((i + step) & 3) < 2; break;       // dashes turning half a lap per second
+        case 2: on = i != (t.tm_sec & 15); break;       // gap walking one step per second
+        default: break;                                  // still
+      }
+    }
+    if (on) display::fbPixel(RING[i][0], RING[i][1]);
   }
-  display::fbIcon(0, icons::DIAL_RING);
-  if (cfg::s.anim) {
-    // Seconds: a dark gap walks clockwise around the 16-pixel ring, one step per second.
-    static const uint8_t RING[16][2] = {{4, 1}, {5, 1}, {6, 2}, {6, 3}, {6, 4}, {6, 5},
-                                        {5, 6}, {4, 6}, {3, 6}, {2, 6}, {1, 5}, {1, 4},
-                                        {1, 3}, {1, 2}, {2, 1}, {3, 1}};
-    const uint8_t* p = RING[t.tm_sec % 16];
-    display::fbPixel(p[0], p[1], false);
-  }
+}
+
+static void drawFill(const tm& t) {
   const float TWO_PI_F = 6.2831853f;
   float dayFrac = (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec) / 86400.0f;
-  int quadrant = t.tm_hour / 6;
 
-  // 6x6 dial in columns/rows 1–6: the fillable interior is the 4x4 block 2–5.
+  if (cfg::s.fillStyle == 0) {
+    // Zigzag: each LED is 1.5 h of the day; the current one blinks.
+    float cells = dayFrac * 16;
+    int filled = (int)cells;
+    for (int k = 0; k < filled && k < 16; k++) display::fbPixel(ZIGZAG[k][0], ZIGZAG[k][1]);
+    if (filled < 16) {
+      bool on = true;
+      if (cfg::s.anim) {
+        if (cfg::s.fillBlink == 0) {
+          on = t.tm_sec % 2 == 0;  // in step with the colon
+        } else {
+          // Blinks faster as its 1.5 h run out: from 1.2 s down to 0.2 s per blink.
+          uint32_t period = 1200 - (uint32_t)(1000 * (cells - filled));
+          on = millis() % period < period / 2;
+        }
+      }
+      if (on) display::fbPixel(ZIGZAG[filled][0], ZIGZAG[filled][1]);
+    }
+    return;
+  }
+  if (cfg::s.fillStyle == 3) return;  // empty
+
+  int quadrant = t.tm_hour / 6;
   for (int y = 2; y <= 5; y++) {
     for (int x = 2; x <= 5; x++) {
-      float dx = x + 0.5f - 4.0f;
-      float dy = y + 0.5f - 4.0f;
-      float a = atan2f(dx, -dy);                        // 0 = top, grows clockwise
+      float a = atan2f(x + 0.5f - 4.0f, -(y + 0.5f - 4.0f));  // 0 = top, clockwise
       if (a < 0) a += TWO_PI_F;
-      bool on = (cfg::s.clockIcon == 0)
-                    ? a < dayFrac * TWO_PI_F
+      bool on = (cfg::s.fillStyle == 1)
+                    ? a < dayFrac * TWO_PI_F                          // pie of the day
                     : (a >= quadrant * TWO_PI_F / 4 && a < (quadrant + 1) * TWO_PI_F / 4);
       if (on) display::fbPixel(x, y);
     }
+  }
+}
+
+// One-minute hourglass: six grains fall (one every 10 s); it flips when the minute ends.
+static void drawHourglass(const tm& t) {
+  static int lastMin = -1;
+  static uint32_t flipAt = 0;
+  if (t.tm_min != lastMin) {
+    if (lastMin >= 0) flipAt = millis() | 1;
+    lastMin = t.tm_min;
+  }
+  if (cfg::s.anim && flipAt && millis() - flipAt < 450) {
+    // Lying on its side, mid-turn: caps left/right, the sand on the left.
+    for (int y = 1; y <= 6; y++) { display::fbPixel(0, y); display::fbPixel(7, y); }
+    for (int y = 2; y <= 5; y++) display::fbPixel(1, y);
+    display::fbPixel(2, 3);
+    display::fbPixel(2, 4);
+    return;
+  }
+  for (int x = 1; x <= 6; x++) { display::fbPixel(x, 0); display::fbPixel(x, 7); }
+  static const uint8_t TOP[6][2] = {{2, 1}, {5, 1}, {3, 1}, {4, 1}, {3, 2}, {4, 2}};  // leaves first
+  static const uint8_t BOT[6][2] = {{3, 6}, {4, 6}, {2, 6}, {5, 6}, {3, 5}, {4, 5}};  // lands first
+  int fallen = t.tm_sec / 10;
+  for (int k = fallen; k < 6; k++) display::fbPixel(TOP[k][0], TOP[k][1]);
+  for (int k = 0; k < fallen; k++) display::fbPixel(BOT[k][0], BOT[k][1]);
+  if (cfg::s.anim) {  // a grain falling through the neck
+    uint32_t ph = (millis() / 150) % 3;
+    if (ph < 2) display::fbPixel(3 + (t.tm_sec & 1), 3 + ph);
+  }
+}
+
+static void drawClockIcon(const tm& t) {
+  switch (cfg::s.clockIcon) {
+    case 1: display::fbIcon(0, icons::CLOCK); return;
+    case 2: drawHourglass(t); return;
+    default:
+      drawRing(t);
+      drawFill(t);
   }
 }
 
@@ -890,7 +958,7 @@ static void renderScreen() {
 
 static void printSettings() {
   const auto& s = cfg::s;
-  static const char* const ICONS[] = {"day pie", "clock", "quadrant"};
+  static const char* const ICONS[] = {"dial", "clock", "hourglass"};
   Serial.printf("name=\"%s\"  id=%s  topics=%s/...\n", s.name, deviceId, mqtt_link::baseTopic());
   Serial.printf("brightness=%u (max %u)  rotated=%s  hourlyBeep=%s\n", s.brightness,
                 cfg::BRIGHT_MAX, s.rotated ? "yes" : "no", s.hourlyBeep ? "on" : "off");
@@ -937,7 +1005,7 @@ static void printHelp() {
       "  vol <1-5>           buzzer volume\n"
       "  night <0|1>         automatic night mode [noite]\n"
       "  night <start> <end> night mode hours, e.g. night 22 6\n"
-      "  icon <0-2>          clock icon: 0 day pie, 1 clock, 2 quadrant [icone]\n"
+      "  icon <0-2>          clock icon: 0 dial, 1 clock, 2 hourglass [icone]\n"
       "  loc <lat> <lon>     weather location, e.g. loc -3.73 -38.53\n"
       "  fetch               refresh weather and quotes now [atualizar]\n"
       "  anim <0|1>          animations (rolling digits, sliding screens) [animacao]\n"
@@ -1196,6 +1264,14 @@ void loop() {
     goToScreen(SCR_CLOCK);
   }
 
+  // The screen redraws every 40 ms so the icon animations run smoothly
+  // (fbPush only talks to the matrix when something changed).
+  static uint32_t lastRender = 0;
+  if (millis() - lastRender >= 40) {
+    lastRender = millis();
+    renderScreen();
+  }
+
   // Every 200 ms.
   static uint32_t lastTick = 0;
   if (millis() - lastTick < 200) return;
@@ -1300,5 +1376,4 @@ void loop() {
     publishInfo();
   }
 
-  renderScreen();
 }

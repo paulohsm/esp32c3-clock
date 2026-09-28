@@ -15,6 +15,9 @@ void clamp() {
   if (s.nightStart > 23) s.nightStart = 22;
   if (s.nightEnd > 23) s.nightEnd = 6;
   if (s.clockIcon >= CLOCK_ICON_COUNT) s.clockIcon = 0;
+  if (s.ringStyle > 3) s.ringStyle = 0;
+  if (s.fillStyle > 3) s.fillStyle = 0;
+  if (s.fillBlink > 1) s.fillBlink = 1;
   if (s.weatherMin < 5) s.weatherMin = 5;
   if (s.weatherMin > 120) s.weatherMin = 120;
   if (s.quotesMin < 5) s.quotesMin = 5;
@@ -53,6 +56,9 @@ void load() {
   s.nightStart   = prefs.getUChar("nstart", 22);
   s.nightEnd     = prefs.getUChar("nend", 6);
   s.clockIcon    = prefs.getUChar("cicon", 0);
+  s.ringStyle    = prefs.getUChar("ring", 0);
+  s.fillStyle    = prefs.getUChar("fill", 0);
+  s.fillBlink    = prefs.getUChar("fblink", 1);
   s.lat          = prefs.getFloat("lat", s.lat);
   s.lon          = prefs.getFloat("lon", s.lon);
   if (prefs.isKey("place")) prefs.getString("place", s.place, PLACE_LEN);
@@ -89,6 +95,9 @@ void save() {
   prefs.putUChar("nstart", s.nightStart);
   prefs.putUChar("nend", s.nightEnd);
   prefs.putUChar("cicon", s.clockIcon);
+  prefs.putUChar("ring", s.ringStyle);
+  prefs.putUChar("fill", s.fillStyle);
+  prefs.putUChar("fblink", s.fillBlink);
   prefs.putFloat("lat", s.lat);
   prefs.putFloat("lon", s.lon);
   prefs.putString("place", s.place);
@@ -124,6 +133,9 @@ void toJson(JsonObject o) {
   o["nightStart"]   = s.nightStart;
   o["nightEnd"]     = s.nightEnd;
   o["clockIcon"]    = s.clockIcon;
+  o["ringStyle"]    = s.ringStyle;
+  o["fillStyle"]    = s.fillStyle;
+  o["fillBlink"]    = s.fillBlink;
   o["lat"]          = s.lat;
   o["lon"]          = s.lon;
   o["place"]        = s.place;
@@ -187,6 +199,9 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "nightStart", s.nightStart);
   changed |= setIf(o, "nightEnd", s.nightEnd);
   changed |= setIf(o, "clockIcon", s.clockIcon);
+  changed |= setIf(o, "ringStyle", s.ringStyle);
+  changed |= setIf(o, "fillStyle", s.fillStyle);
+  changed |= setIf(o, "fillBlink", s.fillBlink);
   changed |= setIf(o, "lat", s.lat);
   changed |= setIf(o, "lon", s.lon);
   changed |= setIf(o, "weatherMin", s.weatherMin);

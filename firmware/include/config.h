@@ -36,7 +36,10 @@ struct Settings {
   bool    nightEnabled = true;            // automatic night mode
   uint8_t nightStart   = 22;              // night mode start hour
   uint8_t nightEnd     = 6;               // night mode end hour
-  uint8_t clockIcon    = 0;               // 0 day pie, 1 static clock, 2 day quadrant
+  uint8_t clockIcon    = 0;               // 0 dial, 1 static clock, 2 one-minute hourglass
+  uint8_t ringStyle    = 0;               // dial ring: 0 snake, 1 dashes, 2 seconds gap, 3 still
+  uint8_t fillStyle    = 0;               // dial inside: 0 zigzag, 1 pie, 2 quarter, 3 empty
+  uint8_t fillBlink    = 1;               // current zigzag LED: 0 with the colon, 1 speeding up
 
   // Location for the weather (set from the phone's GPS). Default: Fortaleza.
   float   lat          = -3.7319f;

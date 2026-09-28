@@ -155,13 +155,40 @@
             <input data-key="brightness" type="range" min="0" max="6" step="1">
           </label>
           <label class="switch"><input data-key="rotated" type="checkbox"> Tela invertida (180°)</label>
-          <label>Ícone da hora
+        </div>
+        <div class="card">
+          <h3>Ícone da hora</h3>
+          <label>Estilo
             <select data-key="clockIcon">
-              <option value="0">Fração do dia</option>
-              <option value="1">Relógio</option>
-              <option value="2">Quadrante do dia</option>
+              <option value="0">Mostrador (progresso do dia)</option>
+              <option value="1">Relógio de ponteiros</option>
+              <option value="2">Ampulheta de 1 minuto</option>
             </select>
           </label>
+          <div id="dialOptions" class="dial-options">
+            <label>Aro
+              <select data-key="ringStyle">
+                <option value="0">Cobrinha (meio aro girando)</option>
+                <option value="1">Tracejado girando</option>
+                <option value="2">Ponteiro de segundos</option>
+                <option value="3">Fixo</option>
+              </select>
+            </label>
+            <label>Miolo (quanto do dia já passou)
+              <select data-key="fillStyle">
+                <option value="0">Serpentina (de baixo p/ cima)</option>
+                <option value="1">Pizza</option>
+                <option value="2">Quadrante (madrugada, manhã, tarde, noite)</option>
+                <option value="3">Vazio</option>
+              </select>
+            </label>
+            <label id="blinkOption">LED atual da serpentina
+              <select data-key="fillBlink">
+                <option value="1">Pisca cada vez mais rápido</option>
+                <option value="0">Pisca junto com os dois-pontos</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div class="card">
           <h3>Movimento</h3>
@@ -281,15 +308,18 @@
       <!-- Info -->
       <div data-panel="info" class="panel" hidden>
         <div class="card">
-          <h3>Agora</h3>
+          <div class="card-head">
+            <h3>Agora</h3>
+            <button id="syncBtn" class="small">Atualizar dados</button>
+          </div>
           <dl id="nowList" class="info"></dl>
         </div>
         <div class="card">
+          <div class="card-head">
+            <h3>Estado</h3>
+            <button id="rebootBtn" class="small danger">Reiniciar relógio</button>
+          </div>
           <dl id="infoList" class="info"></dl>
-        </div>
-        <div class="row">
-          <button id="syncBtn">Atualizar dados</button>
-          <button id="rebootBtn" class="danger">Reiniciar relógio</button>
         </div>
         <div class="card update-card" id="updateCard">
           <h3>Firmware</h3>
