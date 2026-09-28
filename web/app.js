@@ -7,12 +7,29 @@ const LAST_KEY = 'esp32c3-clock.last';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const TIMBRES = ['Clássico', 'Agudo', 'Suave', 'Carrilhão'];
+const MINUTES = [5, 10, 15, 20, 30, 60];
+const QUOTE_NAMES = { USD: 'Dólar', EUR: 'Euro', GBP: 'Libra', BTC: 'Bitcoin', ETH: 'Ethereum' };
+
+// WMO weather codes (Open-Meteo) → Portuguese description.
+function weatherText(code) {
+  if (code === 0) return 'Céu limpo';
+  if (code === 1) return 'Poucas nuvens';
+  if (code === 2) return 'Parcialmente nublado';
+  if (code === 3) return 'Nublado';
+  if (code === 45 || code === 48) return 'Neblina';
+  if (code >= 51 && code <= 57) return 'Garoa';
+  if (code >= 61 && code <= 67) return 'Chuva';
+  if (code >= 80 && code <= 82) return 'Pancadas de chuva';
+  if (code >= 95) return 'Trovoada';
+  if (code >= 71 && code <= 86) return 'Neve';
+  return '—';
+}
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 let client = null;
-const devices = {};      // id -> { online, info, config, schedules }
+const devices = {};      // id -> { online, info, config, schedules, weather, quotes }
 let current = null;      // selected device id
 
 // ------------------------------------------------------------ storage
@@ -107,6 +124,7 @@ function connect(user, pass) {
     client.subscribe('clock/+/config', { qos: 1 });
     client.subscribe('clock/+/schedules', { qos: 1 });
     client.subscribe('clock/+/ack', { qos: 1 });
+    client.subscribe('clock/+/data/+', { qos: 1 });
     if ($('#loginView').hidden === false) {
       if ($('#remember').checked) store(STORE_KEY, { user, pass });
       const last = load(LAST_KEY);
@@ -164,7 +182,9 @@ function onMessage(topic, buf) {
   if (!m) return;
   const [, id, kind] = m;
   const text = buf.toString();
-  const dev = devices[id] || (devices[id] = { online: false, info: {}, config: null, schedules: [] });
+  const dev = devices[id] || (devices[id] = {
+    online: false, info: {}, config: null, schedules: [], weather: null, quotes: {},
+  });
 
   let data = null;
   if (kind !== 'online') {
@@ -176,6 +196,8 @@ function onMessage(topic, buf) {
     case 'info': dev.info = data || {}; break;
     case 'config': dev.config = data; break;
     case 'schedules': dev.schedules = Array.isArray(data) ? data : []; break;
+    case 'data/weather': dev.weather = data && data.valid ? data : null; break;
+    case 'data/quotes': dev.quotes = data || {}; break;
     case 'ack':
       if (id === current) handleAck(data);
       return;
@@ -191,7 +213,7 @@ const ACK_OK = {
   schedule: 'Agenda atualizada.',
   config: 'Ajuste salvo.',
   beep: 'Tocando…',
-  sync: 'Dados atualizados.',
+  sync: 'Atualizando dados…',
   reboot: 'Reiniciando…',
 };
 function handleAck(a) {
@@ -244,6 +266,7 @@ function renderDevice(kind) {
   if (!kind || kind === 'config') renderConfig(d.config);
   if (!kind || kind === 'schedules') renderSchedules(d.schedules);
   if (!kind || kind === 'info' || kind === 'online') renderInfo(d);
+  if (!kind || kind.startsWith('data/')) renderNow(d);
 }
 
 function renderConfig(c) {
@@ -257,6 +280,84 @@ function renderConfig(c) {
     if (key === 'brightness' && c.brightnessMax != null) input.max = c.brightnessMax;
   }
   for (const v of $$('[data-val]')) v.textContent = c[v.dataset.val] ?? '';
+  for (const group of $$('[data-mask]')) {
+    const mask = c[group.dataset.mask] ?? 0;
+    for (const cb of group.querySelectorAll('input[data-bit]')) {
+      cb.checked = (mask >> Number(cb.dataset.bit)) & 1;
+    }
+  }
+  $('#placeName').textContent = c.place || '—';
+  $('#placeCoords').textContent = c.lat != null ? `${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}` : '';
+}
+
+function fmtNum(v, digits) {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function renderNow(d) {
+  const dl = $('#nowList');
+  dl.replaceChildren();
+  const w = d.weather;
+  const row = (k, ...v) => dl.append(el('dt', {}, k), el('dd', {}, ...v));
+  if (w) {
+    row('Tempo', `${Math.round(w.temp)} °C, ${weatherText(w.code).toLowerCase()}`);
+    row('Sensação', `${Math.round(w.feels)} °C · umidade ${w.humidity}%`);
+    row('Hoje', `mín ${Math.round(w.tMin)} °C · máx ${Math.round(w.tMax)} °C`);
+    row('Chuva', `${w.rainDay}% hoje · ${w.rainNext}% nas próximas 3h`);
+    row('UV', `${Math.round(w.uv)} agora · máx ${Math.round(w.uvMax)}`);
+    row('Sol', `nasce ${w.sunrise} · põe ${w.sunset}`);
+  } else {
+    row('Tempo', 'aguardando dados…');
+  }
+  for (const code of Object.keys(QUOTE_NAMES)) {
+    const q = d.quotes && d.quotes[code];
+    if (!q) continue;
+    const digits = q.bid < 100 ? 2 : 0;
+    const pct = el('span', { class: q.pct >= 0 ? 'up' : 'down' },
+      ` ${q.pct >= 0 ? '▲' : '▼'} ${fmtNum(Math.abs(q.pct), 2)}%`);
+    row(QUOTE_NAMES[code], `R$ ${fmtNum(q.bid, digits)}`, pct);
+  }
+  const at = [w && w.at, ...Object.values(d.quotes || {}).map((q) => q.at)].filter(Boolean);
+  if (at.length) {
+    const t = new Date(Math.max(...at) * 1000);
+    row('Atualizado', t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+  }
+}
+
+function onMaskChange(group) {
+  let mask = 0;
+  for (const cb of group.querySelectorAll('input[data-bit]')) {
+    if (cb.checked) mask |= 1 << Number(cb.dataset.bit);
+  }
+  publish('config/set', { [group.dataset.mask]: mask });
+}
+
+async function useGps() {
+  if (!('geolocation' in navigator)) { toast('Este navegador não oferece localização.', true); return; }
+  const btn = $('#gpsBtn');
+  btn.disabled = true;
+  btn.textContent = 'Obtendo localização…';
+  try {
+    const pos = await new Promise((ok, fail) =>
+      navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: false, timeout: 15000 }));
+    const lat = Math.round(pos.coords.latitude * 10000) / 10000;
+    const lon = Math.round(pos.coords.longitude * 10000) / 10000;
+    let place = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+    try {
+      const r = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client'
+        + `?latitude=${lat}&longitude=${lon}&localityLanguage=pt`);
+      const g = await r.json();
+      const city = g.city || g.locality || '';
+      const local = g.locality && g.locality !== city ? g.locality + ', ' : '';
+      if (city) place = (local + city).slice(0, 31);
+    } catch (_) { /* keep coordinates as the name */ }
+    publish('config/set', { lat, lon, place });
+  } catch (err) {
+    toast(err && err.code === 1 ? 'Permissão de localização negada.' : 'Não foi possível obter a localização.', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Usar minha localização (GPS)';
+  }
 }
 
 function describeWhen(s) {
@@ -357,6 +458,9 @@ function addSchedule(e) {
 // ------------------------------------------------------------ setup
 
 function buildStaticControls() {
+  for (const sel of $$('select.minutes')) {
+    for (const m of MINUTES) sel.append(el('option', { value: m }, m < 60 ? `a cada ${m} min` : 'a cada 1 h'));
+  }
   for (const sel of $$('select.hours')) {
     for (let h = 0; h < 24; h++) sel.append(el('option', { value: h }, String(h).padStart(2, '0') + 'h'));
   }
@@ -396,6 +500,10 @@ function wire() {
       });
     }
   }
+  for (const group of $$('[data-mask]')) {
+    for (const cb of group.querySelectorAll('input[data-bit]')) cb.addEventListener('change', () => onMaskChange(group));
+  }
+  $('#gpsBtn').addEventListener('click', useGps);
   $('#testBeep').addEventListener('click', () => publish('cmd/beep', { timbre: Number($('#cfgTimbre').value) }));
   $('#syncBtn').addEventListener('click', () => publish('cmd/sync', ''));
   $('#rebootBtn').addEventListener('click', () => { if (confirm('Reiniciar o relógio?')) publish('cmd/reboot', ''); });

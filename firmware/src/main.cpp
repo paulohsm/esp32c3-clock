@@ -1,8 +1,9 @@
 // esp32c3-clock — desk clock with a 32x8 MAX7219 matrix, controlled over MQTT.
 //
-// Stage 2: NTP clock, touch navigation, hourly chime, night mode, status LED,
-// fixed-width 4x6 font with icons, and remote control over MQTT/TLS (HiveMQ Cloud):
-// instant messages, scheduled messages/alarms and remote settings.
+// NTP clock, touch navigation, hourly chime, night mode, status LED, fixed-width
+// 4x6 font with 6x6 icons, remote control over MQTT/TLS (HiveMQ Cloud) — instant
+// messages, schedules/alarms, remote settings — and internet data fetched by the
+// clock itself: weather (Open-Meteo) and currency/crypto quotes (AwesomeAPI).
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -14,6 +15,7 @@
 
 #include "config.h"
 #include "display.h"
+#include "feeds.h"
 #include "icons.h"
 #include "mqtt_link.h"
 #include "pins.h"
@@ -21,7 +23,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.3.5"
+#define FW_VERSION "0.4.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -40,14 +42,23 @@ static const uint8_t* const ICON_WIFI[]     = {icons::WIFI};
 static const uint8_t* const ICON_NOTE[]     = {icons::NOTE};
 static const uint8_t* const ICON_CALENDAR[] = {icons::CALENDAR};
 static const uint8_t* const ICON_GEAR[]     = {icons::GEAR};
+static const uint8_t* const ICON_UMBRELLA[] = {icons::UMBRELLA};
 
-enum Screen : uint8_t { SCR_CLOCK, SCR_DATE, SCR_LONGDATE, SCR_COUNT };
+// Icons of the quotes, in the order of feeds::QUOTE_CODES.
+static const uint8_t* const QUOTE_ICONS[feeds::QUOTE_COUNT] = {
+    icons::DOLLAR, icons::EURO, icons::POUND, icons::BITCOIN, icons::ETHER};
+
+// Touch cycle. Screens without data (or disabled in the settings) are skipped.
+enum Screen : uint8_t {
+  SCR_CLOCK, SCR_DATE, SCR_LONGDATE, SCR_WEATHER, SCR_RAIN, SCR_UV, SCR_SUN, SCR_QUOTE0,
+};
+static constexpr uint8_t SCR_COUNT = SCR_QUOTE0 + feeds::QUOTE_COUNT;
 
 static WiFiManager wm;
 static OneButton touch(PIN_TOUCH, false, false);  // active HIGH, no pull-up
 
 static char     deviceId[16];
-static Screen   screen       = SCR_CLOCK;
+static uint8_t  screen       = SCR_CLOCK;
 static uint32_t screenSince  = 0;
 static bool     overlay      = false;  // a temporary message is scrolling
 static bool     timeOk       = false;
@@ -65,6 +76,15 @@ static constexpr uint32_t ALARM_RING_MS = 3000;
 
 static constexpr uint32_t SCREEN_TIMEOUT_MS = 10000;  // secondary screens return to clock
 static constexpr uint32_t INFO_PERIOD_MS    = 300000; // republish device info every 5 min
+static constexpr uint32_t ALTERNATE_MS      = 3000;   // value ↔ change / sunrise ↔ sunset
+static constexpr uint32_t RETRY_MS          = 60000;  // retry a failed fetch after 1 min
+static constexpr uint8_t  RAIN_ALERT_PCT    = 60;     // morning warning threshold
+
+// Next time (millis) each feed is due, plus "fetch now" flags.
+static uint32_t nextWeatherAt = 0;
+static uint32_t nextQuotesAt  = 0;
+static bool     weatherDue    = true;
+static bool     quotesDue     = true;
 
 // ------------------------------------------------------------- helpers
 
@@ -92,7 +112,7 @@ static void showMessage(const char* text, const uint8_t* const* frames, uint8_t 
   display::scrollStart(text, frames, frameCount, loops);
 }
 
-static void goToScreen(Screen s) {
+static void goToScreen(uint8_t s) {
   screen = s;
   screenSince = millis();
   if (s == SCR_LONGDATE) {
@@ -127,6 +147,7 @@ static void publishInfo() {
   doc["rssi"] = WiFi.RSSI();
   doc["uptime"] = millis() / 1000;
   doc["schedules"] = sched::count();
+  doc["place"] = cfg::s.place;
   publishJson("info", doc, true);
 }
 
@@ -151,15 +172,37 @@ static void publishAck(const char* cmd, bool ok, const char* error = nullptr, in
   publishJson("ack", doc, false);
 }
 
+static void publishWeather() {
+  JsonDocument doc;
+  feeds::weatherToJson(doc.to<JsonObject>());
+  publishJson("data/weather", doc, true);
+}
+
+static void publishQuotes() {
+  JsonDocument doc;
+  feeds::quotesToJson(doc.to<JsonObject>());
+  publishJson("data/quotes", doc, true);
+}
+
 static void onMqttConnect() {
   publishInfo();
   publishConfig();
   publishSchedules();
+  if (feeds::weather.valid) publishWeather();
+  publishQuotes();
 }
 
 // Called after any settings change (serial or MQTT).
 static void settingsChanged() {
+  // A new location or quote selection is fetched right away.
+  static float lastLat = NAN, lastLon = NAN;
+  static int lastQuotes = -1;
   cfg::clamp();
+  if (cfg::s.lat != lastLat || cfg::s.lon != lastLon) weatherDue = true;
+  if (cfg::s.quotes != lastQuotes) quotesDue = true;
+  lastLat = cfg::s.lat;
+  lastLon = cfg::s.lon;
+  lastQuotes = cfg::s.quotes;
   cfg::save();
   applyBrightness();
   display::setRotated(cfg::s.rotated);
@@ -195,6 +238,32 @@ static void onScheduleFire(const sched::Entry& e) {
 
 // -------------------------------------------------------------- touch
 
+static bool screenAvailable(uint8_t s) {
+  const uint8_t m = cfg::s.screens;
+  const bool w = feeds::weather.valid;
+  switch (s) {
+    case SCR_CLOCK:    return true;
+    case SCR_DATE:     return m & cfg::SB_DATE;
+    case SCR_LONGDATE: return m & cfg::SB_LONGDATE;
+    case SCR_WEATHER:  return (m & cfg::SB_WEATHER) && w;
+    case SCR_RAIN:     return (m & cfg::SB_RAIN) && w;
+    case SCR_UV:       return (m & cfg::SB_UV) && w;
+    case SCR_SUN:      return (m & cfg::SB_SUN) && w && feeds::weather.sunrise[0];
+    default: {
+      uint8_t q = s - SCR_QUOTE0;
+      return (m & cfg::SB_QUOTES) && (cfg::s.quotes & (1 << q)) && feeds::quotes[q].valid;
+    }
+  }
+}
+
+static uint8_t nextScreen() {
+  for (uint8_t k = 1; k <= SCR_COUNT; k++) {
+    uint8_t c = (screen + k) % SCR_COUNT;
+    if (screenAvailable(c)) return c;
+  }
+  return SCR_CLOCK;
+}
+
 static void onClick() {
   statusled::flash();
   sound::click();
@@ -204,7 +273,7 @@ static void onClick() {
     goToScreen(SCR_CLOCK);
     return;
   }
-  goToScreen(static_cast<Screen>((screen + 1) % SCR_COUNT));
+  goToScreen(nextScreen());
 }
 
 static void onDoubleClick() {
@@ -297,6 +366,7 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     sound::chime(timbre);
     publishAck("beep", true);
   } else if (strcmp(topic, "cmd/sync") == 0) {
+    weatherDue = quotesDue = true;  // also refresh the internet data
     onMqttConnect();
     publishAck("sync", true);
   } else if (strcmp(topic, "cmd/reboot") == 0) {
@@ -349,6 +419,93 @@ static void drawClockIcon(const tm& t) {
   }
 }
 
+// Fixed "HH:MM" grid (21 columns): positions never depend on the time.
+// Hours below 10 leave the tens slot blank (no leading zero).
+static void drawTime(int hour, int minute, bool colon) {
+  const int y = 1;
+  int x = display::CONTENT_X + (display::CONTENT_W - 21) / 2;
+  char d[2] = {0, 0};
+  if (hour >= 10) {
+    d[0] = '0' + hour / 10;
+    display::fbText(x, y, d);
+  }
+  d[0] = '0' + hour % 10;
+  display::fbText(x + 5, y, d);
+  if (colon) display::fbText(x + 10, y, ":");
+  char mm[3];
+  snprintf(mm, sizeof(mm), "%02d", minute);
+  display::fbText(x + 12, y, mm);
+}
+
+// Icon + centered text: the layout shared by most info screens.
+static void drawIconText(const uint8_t icon[8], const char* text) {
+  display::fbClear();
+  display::fbIcon(0, icon);
+  display::fbText(centerX(text), 1, text);
+}
+
+// Decimal comma, and K/M suffixes so every value fits the 23 content columns.
+static void formatValue(float v, char* out, size_t len) {
+  float a = fabsf(v);
+  if (a < 10) snprintf(out, len, "%.2f", v);
+  else if (a < 100) snprintf(out, len, "%.1f", v);
+  else if (a < 10000) snprintf(out, len, "%.0f", v);
+  else if (a < 100000) snprintf(out, len, "%.1fK", v / 1000);
+  else if (a < 1000000) snprintf(out, len, "%.0fK", v / 1000);
+  else if (a < 10000000) snprintf(out, len, "%.2fM", v / 1000000);
+  else snprintf(out, len, "%.1fM", v / 1000000);
+  for (char* p = out; *p; p++) if (*p == '.') *p = ',';
+}
+
+static void formatPct(float pct, char* out, size_t len) {
+  if (fabsf(pct) < 10) snprintf(out, len, "%+.1f%%", pct);
+  else snprintf(out, len, "%+.0f%%", pct);
+  for (char* p = out; *p; p++) if (*p == '.') *p = ',';
+}
+
+// WMO weather code → icon.
+static const uint8_t* weatherIcon(int code, bool isDay) {
+  if (code <= 1) return isDay ? icons::SUN : icons::MOON;
+  if (code == 2) return isDay ? icons::PARTLY : icons::CLOUD;
+  if (code == 45 || code == 48) return icons::FOG;
+  if (code >= 95) return icons::STORM;
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return icons::RAIN;
+  return icons::CLOUD;  // 3 overcast, snow codes (not expected in Fortaleza)
+}
+
+static void renderInfoScreen() {
+  const auto& w = feeds::weather;
+  char txt[16];
+  bool second = ((millis() - screenSince) / ALTERNATE_MS) % 2 == 1;
+  switch (screen) {
+    case SCR_WEATHER:
+      snprintf(txt, sizeof(txt), "%d*", (int)lroundf(w.temp));
+      drawIconText(weatherIcon(w.code, w.isDay), txt);
+      break;
+    case SCR_RAIN:
+      snprintf(txt, sizeof(txt), "%u%%", w.rainDay);
+      drawIconText(icons::UMBRELLA, txt);
+      break;
+    case SCR_UV:
+      snprintf(txt, sizeof(txt), "UV %d", (int)lroundf(w.isDay ? w.uv : w.uvMax));
+      drawIconText(icons::SUN, txt);
+      break;
+    case SCR_SUN: {
+      const char* hhmm = second ? w.sunset : w.sunrise;
+      display::fbClear();
+      display::fbIcon(0, second ? icons::SUNSET : icons::SUNRISE);
+      drawTime(atoi(hhmm), atoi(hhmm + 3), true);
+      break;
+    }
+    default: {
+      uint8_t q = screen - SCR_QUOTE0;
+      if (second) formatPct(feeds::quotes[q].pct, txt, sizeof(txt));
+      else formatValue(feeds::quotes[q].bid, txt, sizeof(txt));
+      drawIconText(QUOTE_ICONS[q], txt);
+    }
+  }
+}
+
 static void renderClock(bool ok, const tm& t) {
   display::fbClear();
   const int y = 1;  // 6-row font centered in the 8-row matrix
@@ -358,21 +515,7 @@ static void renderClock(bool ok, const tm& t) {
     return;
   }
   drawClockIcon(t);
-
-  // Fixed "HH:MM" grid (21 columns): positions never depend on the time.
-  // Hours below 10 leave the tens slot blank (no leading zero).
-  int x = display::CONTENT_X + (display::CONTENT_W - 21) / 2;
-  char d[2] = {0, 0};
-  if (t.tm_hour >= 10) {
-    d[0] = '0' + t.tm_hour / 10;
-    display::fbText(x, y, d);
-  }
-  d[0] = '0' + t.tm_hour % 10;
-  display::fbText(x + 5, y, d);
-  if (t.tm_sec % 2 == 0) display::fbText(x + 10, y, ":");
-  char mm[3];
-  snprintf(mm, sizeof(mm), "%02d", t.tm_min);
-  display::fbText(x + 12, y, mm);
+  drawTime(t.tm_hour, t.tm_min, t.tm_sec % 2 == 0);
 }
 
 static void renderDate(bool ok, const tm& t) {
@@ -391,7 +534,13 @@ static void renderScreen() {
   switch (screen) {
     case SCR_CLOCK: renderClock(ok, t); break;
     case SCR_DATE:  renderDate(ok, t);  break;
-    default: return;
+    case SCR_LONGDATE: return;
+    default:
+      if (!screenAvailable(screen)) {  // data went away (e.g. setting changed)
+        goToScreen(SCR_CLOCK);
+        return;
+      }
+      renderInfoScreen();
   }
   display::fbPush();
 }
@@ -410,6 +559,22 @@ static void printSettings() {
                 nightActive ? "yes" : "no");
   Serial.printf("clockIcon=%u (%s)  schedules=%u\n", s.clockIcon, ICONS[s.clockIcon],
                 sched::count());
+  Serial.printf("place=\"%s\" (%.4f, %.4f)  weather every %u min, quotes every %u min%s\n",
+                s.place, s.lat, s.lon, s.weatherMin, s.quotesMin,
+                s.quotesAtNight ? " (also at night)" : "");
+  const auto& w = feeds::weather;
+  if (w.valid) {
+    Serial.printf("weather: %.1fC (feels %.1f) code %d  rain %u%% next 3h / %u%% today  "
+                  "uv %.1f (max %.1f)  sun %s-%s\n",
+                  w.temp, w.feels, w.code, w.rainNext, w.rainDay, w.uv, w.uvMax, w.sunrise,
+                  w.sunset);
+  }
+  for (uint8_t i = 0; i < feeds::QUOTE_COUNT; i++) {
+    if (feeds::quotes[i].valid) {
+      Serial.printf("%s: R$ %.4f (%+.2f%%)\n", feeds::QUOTE_CODES[i], feeds::quotes[i].bid,
+                    feeds::quotes[i].pct);
+    }
+  }
   Serial.printf("wifi=%s ip=%s rssi=%d  ntp=%s  mqtt=%s  fw=%s\n",
                 WiFi.status() == WL_CONNECTED ? "ok" : "down", WiFi.localIP().toString().c_str(),
                 WiFi.RSSI(), timeOk ? "ok" : "waiting", mqtt_link::connected() ? "ok" : "down",
@@ -429,6 +594,8 @@ static void printHelp() {
       "  night <0|1>         automatic night mode [noite]\n"
       "  night <start> <end> night mode hours, e.g. night 22 6\n"
       "  icon <0-2>          clock icon: 0 day pie, 1 clock, 2 quadrant [icone]\n"
+      "  loc <lat> <lon>     weather location, e.g. loc -3.73 -38.53\n"
+      "  fetch               refresh weather and quotes now [atualizar]\n"
       "  msg <text>          scroll a message\n"
       "  test                play the hourly chime [teste]\n"
       "  wifireset           forget Wi-Fi and reboot into the setup portal"));
@@ -448,10 +615,12 @@ static void runCommand(String line) {
   else if (cmd == "icone") cmd = "icon";
   else if (cmd == "teste") cmd = "test";
   else if (cmd == "ajuda") cmd = "help";
+  else if (cmd == "atualizar") cmd = "fetch";
 
   if (cmd == "help" || cmd == "?") { printHelp(); return; }
   if (cmd == "info") { printSettings(); return; }
   if (cmd == "test") { sound::chime(); return; }
+  if (cmd == "fetch") { weatherDue = quotesDue = true; return; }
   if (cmd == "msg") {
     static char msgBuf[160];
     strlcpy(msgBuf, arg.c_str(), sizeof(msgBuf));
@@ -489,6 +658,12 @@ static void runCommand(String line) {
       s.nightEnd = constrain(arg.substring(sp2 + 1).toInt(), 0, 23);
       s.nightEnabled = true;
     }
+  } else if (cmd == "loc") {
+    int sp2 = arg.indexOf(' ');
+    if (sp2 < 0) { Serial.println("Usage: loc <lat> <lon>"); return; }
+    s.lat = arg.substring(0, sp2).toFloat();
+    s.lon = arg.substring(sp2 + 1).toFloat();
+    snprintf(s.place, cfg::PLACE_LEN, "%.3f, %.3f", s.lat, s.lon);
   } else if (cmd == "icon") {
     s.clockIcon = constrain(arg.toInt(), 0, cfg::CLOCK_ICON_COUNT - 1);
   } else {
@@ -618,7 +793,8 @@ void loop() {
   }
 
   // Secondary screens return to the clock by themselves.
-  if (screen == SCR_DATE && millis() - screenSince > SCREEN_TIMEOUT_MS) {
+  if (screen != SCR_CLOCK && screen != SCR_LONGDATE && !overlay &&
+      millis() - screenSince > SCREEN_TIMEOUT_MS) {
     goToScreen(SCR_CLOCK);
   }
 
@@ -654,6 +830,37 @@ void loop() {
     if (t.tm_min != lastMinute) {  // once per minute
       lastMinute = t.tm_min;
       if (sched::check(t, onScheduleFire)) publishSchedules();
+
+      // Morning rain warning.
+      const auto& w = feeds::weather;
+      if (cfg::s.rainAlert && t.tm_hour == cfg::s.rainHour && t.tm_min == 0 && w.valid &&
+          w.rainDay >= RAIN_ALERT_PCT && !alarmActive) {
+        static char txt[64];
+        snprintf(txt, sizeof(txt), "Leve guarda-chuva! Chuva %u%% hoje", w.rainDay);
+        sound::chime();
+        showMessage(txt, ICON_UMBRELLA, 1, 3);
+      }
+    }
+  }
+
+  // Internet data: one fetch at a time, never in the middle of a scroll or alarm
+  // (a fetch blocks for a second or two).
+  if (wifiUp && timeOk && !display::isScrolling() && !alarmActive) {
+    uint32_t now = millis();
+    if (weatherDue || (int32_t)(now - nextWeatherAt) >= 0) {
+      weatherDue = false;
+      bool okW = feeds::fetchWeather(cfg::s.lat, cfg::s.lon);
+      nextWeatherAt = millis() + (okW ? cfg::s.weatherMin * 60000UL : RETRY_MS);
+      if (okW) publishWeather();
+    } else if (quotesDue || (int32_t)(now - nextQuotesAt) >= 0) {
+      quotesDue = false;
+      if (!cfg::s.quotes || (nightActive && !cfg::s.quotesAtNight)) {
+        nextQuotesAt = now + RETRY_MS;  // nothing to fetch now; check again later
+      } else {
+        bool okQ = feeds::fetchQuotes(cfg::s.quotes);
+        nextQuotesAt = millis() + (okQ ? cfg::s.quotesMin * 60000UL : RETRY_MS);
+        if (okQ) publishQuotes();
+      }
     }
   }
 

@@ -11,6 +11,16 @@ constexpr uint8_t TIMBRE_COUNT     = 4;
 constexpr uint8_t VOLUME_MAX       = 5;
 constexpr uint8_t CLOCK_ICON_COUNT = 3;
 constexpr size_t  NAME_LEN         = 24;
+constexpr size_t  PLACE_LEN        = 32;
+
+// Quote selection bits (see feeds.h for codes): USD, EUR, GBP, BTC, ETH.
+constexpr uint8_t QUOTES_ALL = 0x1F;
+// Screen selection bits for the touch cycle (the clock itself is always on).
+enum ScreenBit : uint8_t {
+  SB_DATE = 1 << 0, SB_LONGDATE = 1 << 1, SB_WEATHER = 1 << 2, SB_RAIN = 1 << 3,
+  SB_UV = 1 << 4, SB_SUN = 1 << 5, SB_QUOTES = 1 << 6,
+};
+constexpr uint8_t SCREENS_ALL = 0x7F;
 
 struct Settings {
   char    name[NAME_LEN] = "Clock";  // friendly name shown in the app
@@ -23,6 +33,19 @@ struct Settings {
   uint8_t nightStart   = 22;              // night mode start hour
   uint8_t nightEnd     = 6;               // night mode end hour
   uint8_t clockIcon    = 0;               // 0 day pie, 1 static clock, 2 day quadrant
+
+  // Location for the weather (set from the phone's GPS). Default: Fortaleza.
+  float   lat          = -3.7319f;
+  float   lon          = -38.5267f;
+  char    place[PLACE_LEN] = "Fortaleza";
+
+  uint8_t weatherMin   = 10;              // weather refresh interval (minutes)
+  uint8_t quotesMin    = 15;              // quotes refresh interval (minutes)
+  bool    quotesAtNight = false;          // also refresh quotes during night mode
+  uint8_t quotes       = 0b11011;         // USD, EUR, BTC, ETH
+  uint8_t screens      = SCREENS_ALL;     // screens in the touch cycle
+  bool    rainAlert    = true;            // morning "take an umbrella" warning
+  uint8_t rainHour     = 7;               // hour of the rain warning
 };
 
 extern Settings s;

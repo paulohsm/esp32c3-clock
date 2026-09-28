@@ -123,3 +123,9 @@ code { color: var(--accent-2); }
   max-width: calc(100% - 32px); z-index: 10;
 }
 .toast.err { border-color: var(--danger); color: var(--danger); }
+
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.place { display: flex; flex-direction: column; gap: 2px; }
+.place .muted { font-size: .85rem; }
+.up { color: var(--ok); }
+.down { color: var(--danger); }

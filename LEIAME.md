@@ -10,7 +10,7 @@ Relógio de mesa com ESP32-C3 SuperMini e matriz de LEDs MAX7219 32×8. É contr
 esp32c3-clock/
 ├── firmware/   # PlatformIO — ESP32-C3
 ├── web/        # app do celular (PWA, MQTT via WebSocket 8884)
-├── worker/     # Cloudflare Worker: clima, cotações, cripto → MQTT — etapa 4
+├── worker/     # (futuro) dados que exigem chave de API, como Ibovespa e YouTube
 └── docs/       # esquemas, fotos
 ```
 
@@ -48,7 +48,7 @@ Para trocar de rede depois, **segure o toque (ou o BOOT) ao ligar**, ou mande `w
 
 | Gesto | Ação |
 |---|---|
-| Toque curto | Próxima tela: hora → data → data por extenso |
+| Toque curto | Próxima tela: hora → data → data por extenso → tempo → chuva → UV → nascer/pôr do sol → cotações. Telas sem dados ou desligadas no app são puladas, e cada uma volta sozinha para a hora após 10 s. |
 | Toque duplo | Nome, IP, sinal Wi-Fi, estado do MQTT, ID do relógio, versão |
 | Toque longo | Liga/desliga o bipe de hora |
 | Qualquer toque durante um alarme | Para o alarme |
@@ -83,12 +83,14 @@ Cada relógio tem um ID tirado do chip, por exemplo `clock-a1b2c3`. Ele aparece 
 | `info` | relógio → | `{"name","fw","ip","ssid","rssi","uptime","schedules"}` (retido) |
 | `config` | relógio → | todas as configurações (retido) |
 | `schedules` | relógio → | lista de agendamentos (retido) |
-| `ack` | relógio → | resposta a cada comando: `{"cmd","ok","error?","id?"}` |
+| `data/weather` | relógio → | meteorologia mais recente (retido): `temp`, `feels`, `humidity`, `code` (código WMO), `isDay`, `uv`, `uvMax`, `rainNext`, `rainDay`, `tMax`, `tMin`, `sunrise`, `sunset`, `at` |
+| `data/quotes` | relógio → | cotações mais recentes em reais (retido): `{"USD":{"bid","pct","at"},…}` |
+| `ack` | relógio → resposta a cada comando: `{"cmd","ok","error?","id?"}` |
 | `cmd/msg` | → relógio | texto puro, ou `{"text":"...","beep":true,"repeat":2}` |
 | `cmd/schedule` | → relógio | veja abaixo |
 | `cmd/beep` | → relógio | vazio, ou `{"timbre":3}` |
 | `config/set` | → relógio | qualquer parte das configurações, por exemplo `{"brightness":4,"rotated":true}` |
-| `cmd/sync` | → relógio | republica `info`, `config` e `schedules` |
+| `cmd/sync` | → relógio | busca de novo tempo e cotações e republica tudo |
 | `cmd/reboot` | → relógio | reinicia |
 
 O relógio **lê** `config/set` e **publica** `config`. São dois tópicos separados para que ele não receba de volta a própria mensagem retida.
@@ -111,7 +113,15 @@ O relógio **lê** `config/set` e **publica** `config`. São dois tópicos separ
 
 Os agendamentos ficam gravados no relógio e funcionam mesmo sem internet.
 
-**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2).
+**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutos), `quotesAtNight`, `quotes` (soma de bits: 1 dólar, 2 euro, 4 libra, 8 bitcoin, 16 ethereum), `screens` (soma de bits: 1 data, 2 data por extenso, 4 tempo, 8 chuva, 16 UV, 32 sol, 64 cotações), `rainAlert`, `rainHour`.
+
+## Dados da internet
+
+O próprio relógio busca os dados por HTTPS, sem precisar de chave de API:
+
+- **Meteorologia**, do [Open-Meteo](https://open-meteo.com), para o local configurado, a cada `weatherMin` minutos: temperatura, condição do tempo, chance de chuva (no dia e nas próximas 3 h), UV, nascer e pôr do sol. O local é definido pelo botão de GPS do app.
+- **Cotações**, da [AwesomeAPI](https://docs.awesomeapi.com.br), a cada `quotesMin` minutos. Não são atualizadas no modo noite, a menos que `quotesAtNight` esteja ligado.
+- **Aviso de chuva**: às `rainHour`:00, se a chance de chuva no dia for de 60% ou mais, rola "Leve guarda-chuva!" com um bipe.
 
 ### Testando pelo Fedora
 
@@ -143,7 +153,7 @@ O app é publicado no GitHub Pages pelo arquivo `.github/workflows/pages.yml`, a
 
 ## Comandos pelo serial
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `msg`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `msg`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `atualizar`, `teste`.
 
 ## Credenciais MQTT (HiveMQ)
 
@@ -161,6 +171,7 @@ A senha do relógio fica em `firmware/include/secrets.h`, que não vai para o gi
 - [x] **Etapa 1.1**: fonte 4×6 de largura fixa, tela com ícone + conteúdo, ícone de progresso do dia (a barrinha de segundos foi removida depois)
 - [x] **Etapa 2**: MQTT com TLS: mensagens na hora, agendamentos/alarmes gravados na flash, configurações remotas, status online (LWT)
 - [x] **Etapa 3**: app do celular (PWA no GitHub Pages) com login
-- [ ] **Etapa 4**: Worker: clima (Open-Meteo: chuva, UV, nascer/pôr do sol), dólar/euro, Ibovespa, cripto, inscritos do YouTube
+- [x] **Etapa 4**: meteorologia (Open-Meteo) e cotações (AwesomeAPI) buscadas pelo próprio relógio; localização por GPS, intervalos, telas e cotações escolhidos no app; aviso de chuva
+- [ ] **Etapa 4.1**: Ibovespa e inscritos do YouTube (exigem chave de API → lado do servidor)
 - [ ] **Etapa 5**: fase da lua, posição real do Sol e da Lua pelas coordenadas, ícones animados (clima, lua, Jogo da Vida, chuva de pixels), pomodoro, cronômetro, contagem regressiva
 - [ ] **Etapa 6**: OTA via GitHub Releases, aviso do portão, notificações no celular (ntfy)

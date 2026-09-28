@@ -7,7 +7,10 @@
   <title>Relógio</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="icon" href="icons/icon-512.png" type="image/png" sizes="512x512">
+  <link rel="apple-touch-icon" href="icons/icon-192.png" sizes="192x192">
+  <link rel="shortcut icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js" defer></script>
   <script src="app.js" defer></script>
@@ -135,6 +138,54 @@
           </label>
         </div>
         <div class="card">
+          <h3>Localização</h3>
+          <p class="muted">Usada para a meteorologia.</p>
+          <div class="place"><strong id="placeName">—</strong><span id="placeCoords" class="muted"></span></div>
+          <button type="button" id="gpsBtn">Usar minha localização (GPS)</button>
+        </div>
+        <div class="card">
+          <h3>Telas do toque</h3>
+          <p class="muted">A hora sempre aparece. Telas sem dados são puladas.</p>
+          <div class="checks" data-mask="screens">
+            <label class="check"><input type="checkbox" data-bit="0"> Data</label>
+            <label class="check"><input type="checkbox" data-bit="1"> Data por extenso</label>
+            <label class="check"><input type="checkbox" data-bit="2"> Tempo agora</label>
+            <label class="check"><input type="checkbox" data-bit="3"> Chance de chuva</label>
+            <label class="check"><input type="checkbox" data-bit="4"> Índice UV</label>
+            <label class="check"><input type="checkbox" data-bit="5"> Nascer e pôr do sol</label>
+            <label class="check"><input type="checkbox" data-bit="6"> Cotações</label>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Cotações</h3>
+          <p class="muted">Em reais, com a variação do dia.</p>
+          <div class="checks" data-mask="quotes">
+            <label class="check"><input type="checkbox" data-bit="0"> Dólar</label>
+            <label class="check"><input type="checkbox" data-bit="1"> Euro</label>
+            <label class="check"><input type="checkbox" data-bit="2"> Libra</label>
+            <label class="check"><input type="checkbox" data-bit="3"> Bitcoin</label>
+            <label class="check"><input type="checkbox" data-bit="4"> Ethereum</label>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Atualização</h3>
+          <div class="row">
+            <label>Meteorologia
+              <select data-key="weatherMin" class="minutes"></select>
+            </label>
+            <label>Cotações
+              <select data-key="quotesMin" class="minutes"></select>
+            </label>
+          </div>
+          <label class="switch"><input data-key="quotesAtNight" type="checkbox"> Atualizar cotações também no modo noite</label>
+        </div>
+        <div class="card">
+          <h3>Aviso de chuva</h3>
+          <p class="muted">Avisa "leve guarda-chuva" quando a chance de chuva no dia for de 60% ou mais.</p>
+          <label class="switch"><input data-key="rainAlert" type="checkbox"> Ativado</label>
+          <label class="inline">Às <select data-key="rainHour" class="hours"></select></label>
+        </div>
+        <div class="card">
           <h3>Modo noite</h3>
           <p class="muted">Brilho mínimo e sem bipe de hora.</p>
           <label class="switch"><input data-key="nightEnabled" type="checkbox"> Automático</label>
@@ -147,6 +198,10 @@
 
       <!-- Info -->
       <div data-panel="info" class="panel" hidden>
+        <div class="card">
+          <h3>Agora</h3>
+          <dl id="nowList" class="info"></dl>
+        </div>
         <div class="card">
           <dl id="infoList" class="info"></dl>
         </div>

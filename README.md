@@ -10,7 +10,7 @@ Desk clock built with an ESP32-C3 SuperMini and a 32×8 MAX7219 LED matrix. It c
 esp32c3-clock/
 ├── firmware/   # PlatformIO — ESP32-C3
 ├── web/        # phone app (PWA, MQTT over WebSocket 8884)
-├── worker/     # Cloudflare Worker: weather, FX rates, crypto → MQTT — stage 4
+├── worker/     # (future) server-side data that needs API keys, e.g. Ibovespa, YouTube
 └── docs/       # diagrams, photos
 ```
 
@@ -48,7 +48,7 @@ To change networks later, **hold the touch pad (or BOOT) while powering on**, or
 
 | Gesture | Action |
 |---|---|
-| Tap | Next screen: time → date → long date |
+| Tap | Next screen: time → date → long date → weather → rain → UV → sunrise/sunset → quotes (screens without data or disabled in the app are skipped; they return to the time after 10 s) |
 | Double tap | Name, IP, Wi-Fi signal, MQTT status, device id, version |
 | Long press | Toggle hourly chime |
 | Any, during an alarm | Stop the alarm |
@@ -73,12 +73,14 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 | `info` | clock → | `{"name","fw","ip","ssid","rssi","uptime","schedules"}` (retained) |
 | `config` | clock → | full settings (retained) |
 | `schedules` | clock → | list of schedules (retained) |
-| `ack` | clock → | reply to each command: `{"cmd","ok","error?","id?"}` |
+| `data/weather` | clock → | latest weather (retained): `temp`, `feels`, `humidity`, `code` (WMO), `isDay`, `uv`, `uvMax`, `rainNext`, `rainDay`, `tMax`, `tMin`, `sunrise`, `sunset`, `at` |
+| `data/quotes` | clock → | latest quotes in BRL (retained): `{"USD":{"bid","pct","at"},…}` |
+| `ack` | clock → reply to each command: `{"cmd","ok","error?","id?"}` |
 | `cmd/msg` | → clock | plain text, or `{"text":"...","beep":true,"repeat":2}` |
 | `cmd/schedule` | → clock | see below |
 | `cmd/beep` | → clock | empty, or `{"timbre":3}` |
 | `config/set` | → clock | any subset of the settings, e.g. `{"brightness":4,"rotated":true}` |
-| `cmd/sync` | → clock | republish `info`, `config`, `schedules` |
+| `cmd/sync` | → clock | refresh weather/quotes and republish everything |
 | `cmd/reboot` | → clock | reboot |
 
 **Schedules** (`cmd/schedule`):
@@ -94,7 +96,15 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 
 `days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
 
-**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2).
+**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes), `rainAlert`, `rainHour`.
+
+## Internet data
+
+The clock fetches its own data over HTTPS, with no API keys:
+
+- **Weather** from [Open-Meteo](https://open-meteo.com) for the configured location (the app's GPS button sets it), every `weatherMin` minutes: temperature, weather, rain chance (today and next 3 h), UV, sunrise/sunset.
+- **Quotes** from [AwesomeAPI](https://docs.awesomeapi.com.br) every `quotesMin` minutes, skipped during night mode unless `quotesAtNight`.
+- **Rain warning**: at `rainHour`:00, if today's rain chance is 60% or more, it scrolls "Leve guarda-chuva!" with a chime.
 
 ### Testing from Fedora
 
@@ -126,7 +136,7 @@ It is published to GitHub Pages by `.github/workflows/pages.yml` on every push t
 
 ## Serial commands
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `teste`.
 
 ## MQTT credentials (HiveMQ)
 
@@ -144,6 +154,7 @@ The clock's password goes in `firmware/include/secrets.h`, which is git-ignored.
 - [x] **Stage 1.1**: fixed-width 4×6 font, icon + content layout, day-progress clock icon (seconds bar later removed)
 - [x] **Stage 2**: MQTT over TLS: instant messages, schedules/alarms stored in flash, remote settings, online status (LWT)
 - [x] **Stage 3**: phone app (PWA on GitHub Pages) with login
-- [ ] **Stage 4**: Worker: weather (Open-Meteo: rain, UV, sunrise/sunset), USD/EUR, Ibovespa, crypto, YouTube subscribers
+- [x] **Stage 4**: weather (Open-Meteo) and quotes (AwesomeAPI) fetched by the clock; GPS location, intervals, screens and quotes chosen in the app; rain warning
+- [ ] **Stage 4.1**: Ibovespa and YouTube subscribers (need API keys → server side)
 - [ ] **Stage 5**: moon phase, real Sun/Moon position from coordinates, animated icons (weather, moon, Game of Life, pixel rain), pomodoro, stopwatch, countdown
 - [ ] **Stage 6**: OTA via GitHub Releases, gate status, phone notifications (ntfy)
