@@ -111,7 +111,7 @@ O relógio **lê** `config/set` e **publica** `config`. São dois tópicos separ
 
 Os agendamentos ficam gravados no relógio e funcionam mesmo sem internet.
 
-**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `secondsBar`.
+**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2).
 
 ### Testando pelo Fedora
 
@@ -130,7 +130,7 @@ mosquitto_pub -h $H -p 8883 --cafile $CA -u clock_app -P 'SENHA' \
 
 ## Comandos pelo serial
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `seconds`, `msg`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `segundos`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `msg`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `teste`.
 
 ## Credenciais MQTT (HiveMQ)
 
@@ -145,7 +145,7 @@ A senha do relógio fica em `firmware/include/secrets.h`, que não vai para o gi
 ## Roteiro
 
 - [x] **Etapa 1**: NTP, telas de hora e data, toque, bipe de hora (4 timbres), modo noite, brilho limitado (6/15), orientação, LED de status, portal Wi-Fi
-- [x] **Etapa 1.1**: fonte 4×6 de largura fixa, tela com ícone + conteúdo, ícone de progresso do dia, barrinha de segundos
+- [x] **Etapa 1.1**: fonte 4×6 de largura fixa, tela com ícone + conteúdo, ícone de progresso do dia (a barrinha de segundos foi removida depois)
 - [x] **Etapa 2**: MQTT com TLS: mensagens na hora, agendamentos/alarmes gravados na flash, configurações remotas, status online (LWT)
 - [ ] **Etapa 3**: app do celular (PWA no Cloudflare Pages) com login
 - [ ] **Etapa 4**: Worker: clima (Open-Meteo: chuva, UV, nascer/pôr do sol), dólar/euro, Ibovespa, cripto, inscritos do YouTube

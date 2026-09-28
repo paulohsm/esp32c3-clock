@@ -94,7 +94,7 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 
 `days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
 
-**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `secondsBar`.
+**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2).
 
 ### Testing from Fedora
 
@@ -113,7 +113,7 @@ mosquitto_pub -h $H -p 8883 --cafile $CA -u clock_app -P 'PASSWORD' \
 
 ## Serial commands
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `seconds`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `segundos`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `teste`.
 
 ## MQTT credentials (HiveMQ)
 
@@ -128,7 +128,7 @@ The clock's password goes in `firmware/include/secrets.h`, which is git-ignored.
 ## Roadmap
 
 - [x] **Stage 1**: NTP, time/date screens, touch, hourly chime (4 timbres), night mode, brightness cap (6/15), orientation, status LED, Wi-Fi portal
-- [x] **Stage 1.1**: fixed-width 4×6 font, icon + content layout, day-progress clock icon, seconds bar
+- [x] **Stage 1.1**: fixed-width 4×6 font, icon + content layout, day-progress clock icon (seconds bar later removed)
 - [x] **Stage 2**: MQTT over TLS: instant messages, schedules/alarms stored in flash, remote settings, online status (LWT)
 - [ ] **Stage 3**: phone app (PWA on Cloudflare Pages) with login
 - [ ] **Stage 4**: Worker: weather (Open-Meteo: rain, UV, sunrise/sunset), USD/EUR, Ibovespa, crypto, YouTube subscribers

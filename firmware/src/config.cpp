@@ -31,7 +31,6 @@ void load() {
   s.nightStart   = prefs.getUChar("nstart", 22);
   s.nightEnd     = prefs.getUChar("nend", 6);
   s.clockIcon    = prefs.getUChar("cicon", 0);
-  s.secondsBar   = prefs.getBool("secbar", true);
   prefs.end();
   clamp();
 }
@@ -48,7 +47,6 @@ void save() {
   prefs.putUChar("nstart", s.nightStart);
   prefs.putUChar("nend", s.nightEnd);
   prefs.putUChar("cicon", s.clockIcon);
-  prefs.putBool("secbar", s.secondsBar);
   prefs.end();
 }
 
@@ -64,7 +62,6 @@ void toJson(JsonObject o) {
   o["nightStart"]   = s.nightStart;
   o["nightEnd"]     = s.nightEnd;
   o["clockIcon"]    = s.clockIcon;
-  o["secondsBar"]   = s.secondsBar;
 }
 
 template <typename T>
@@ -94,7 +91,6 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "nightStart", s.nightStart);
   changed |= setIf(o, "nightEnd", s.nightEnd);
   changed |= setIf(o, "clockIcon", s.clockIcon);
-  changed |= setIf(o, "secondsBar", s.secondsBar);
   clamp();
   return changed;
 }

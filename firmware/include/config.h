@@ -23,7 +23,6 @@ struct Settings {
   uint8_t nightStart   = 22;              // night mode start hour
   uint8_t nightEnd     = 6;               // night mode end hour
   uint8_t clockIcon    = 0;               // 0 day pie, 1 static clock, 2 day quadrant
-  bool    secondsBar   = true;            // seconds progress bar on the bottom row
 };
 
 extern Settings s;

@@ -21,7 +21,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.3.0"
+#define FW_VERSION "0.3.5"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -334,12 +334,11 @@ static void drawClockIcon(const tm& t) {
   float dayFrac = (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec) / 86400.0f;
   int quadrant = t.tm_hour / 6;
 
-  for (int y = 1; y <= 6; y++) {
-    for (int x = 1; x <= 6; x++) {
-      if (icons::DIAL_RING[y] & (0x80 >> x)) continue;  // outline pixel
+  // 6x6 dial in columns/rows 1–6: the fillable interior is the 4x4 block 2–5.
+  for (int y = 2; y <= 5; y++) {
+    for (int x = 2; x <= 5; x++) {
       float dx = x + 0.5f - 4.0f;
       float dy = y + 0.5f - 4.0f;
-      if (dx * dx + dy * dy > 9.0f) continue;          // outside the inner circle
       float a = atan2f(dx, -dy);                        // 0 = top, grows clockwise
       if (a < 0) a += TWO_PI_F;
       bool on = (cfg::s.clockIcon == 0)
@@ -352,7 +351,7 @@ static void drawClockIcon(const tm& t) {
 
 static void renderClock(bool ok, const tm& t) {
   display::fbClear();
-  int y = cfg::s.secondsBar ? 0 : 1;
+  const int y = 1;  // 6-row font centered in the 8-row matrix
   if (!ok) {
     display::fbIcon(0, icons::CLOCK);
     display::fbText(centerX("--:--"), y, "--:--");
@@ -360,19 +359,20 @@ static void renderClock(bool ok, const tm& t) {
   }
   drawClockIcon(t);
 
-  // "HH:MM" is 21 columns wide. Drawn in parts so the colon blinks without shifting.
-  char hh[3], mm[3];
-  snprintf(hh, sizeof(hh), "%02d", t.tm_hour);
-  snprintf(mm, sizeof(mm), "%02d", t.tm_min);
+  // Fixed "HH:MM" grid (21 columns): positions never depend on the time.
+  // Hours below 10 leave the tens slot blank (no leading zero).
   int x = display::CONTENT_X + (display::CONTENT_W - 21) / 2;
-  display::fbText(x, y, hh);
-  if (t.tm_sec % 2 == 0) display::fbText(x + 10, y, ":");
-  display::fbText(x + 12, y, mm);
-
-  if (cfg::s.secondsBar) {
-    int n = (t.tm_sec + 1) * display::CONTENT_W / 60;  // 0..23 pixels over the minute
-    for (int i = 0; i < n; i++) display::fbPixel(display::CONTENT_X + i, 7);
+  char d[2] = {0, 0};
+  if (t.tm_hour >= 10) {
+    d[0] = '0' + t.tm_hour / 10;
+    display::fbText(x, y, d);
   }
+  d[0] = '0' + t.tm_hour % 10;
+  display::fbText(x + 5, y, d);
+  if (t.tm_sec % 2 == 0) display::fbText(x + 10, y, ":");
+  char mm[3];
+  snprintf(mm, sizeof(mm), "%02d", t.tm_min);
+  display::fbText(x + 12, y, mm);
 }
 
 static void renderDate(bool ok, const tm& t) {
@@ -408,8 +408,8 @@ static void printSettings() {
                 sound::timbreName(s.timbre), s.volume, cfg::VOLUME_MAX,
                 s.nightEnabled ? "on" : "off", s.nightStart, s.nightEnd,
                 nightActive ? "yes" : "no");
-  Serial.printf("clockIcon=%u (%s)  secondsBar=%s  schedules=%u\n", s.clockIcon, ICONS[s.clockIcon],
-                s.secondsBar ? "on" : "off", sched::count());
+  Serial.printf("clockIcon=%u (%s)  schedules=%u\n", s.clockIcon, ICONS[s.clockIcon],
+                sched::count());
   Serial.printf("wifi=%s ip=%s rssi=%d  ntp=%s  mqtt=%s  fw=%s\n",
                 WiFi.status() == WL_CONNECTED ? "ok" : "down", WiFi.localIP().toString().c_str(),
                 WiFi.RSSI(), timeOk ? "ok" : "waiting", mqtt_link::connected() ? "ok" : "down",
@@ -429,7 +429,6 @@ static void printHelp() {
       "  night <0|1>         automatic night mode [noite]\n"
       "  night <start> <end> night mode hours, e.g. night 22 6\n"
       "  icon <0-2>          clock icon: 0 day pie, 1 clock, 2 quadrant [icone]\n"
-      "  seconds <0|1>       seconds bar [segundos]\n"
       "  msg <text>          scroll a message\n"
       "  test                play the hourly chime [teste]\n"
       "  wifireset           forget Wi-Fi and reboot into the setup portal"));
@@ -447,7 +446,6 @@ static void runCommand(String line) {
   if (cmd == "nome") cmd = "name";
   else if (cmd == "noite") cmd = "night";
   else if (cmd == "icone") cmd = "icon";
-  else if (cmd == "segundos") cmd = "seconds";
   else if (cmd == "teste") cmd = "test";
   else if (cmd == "ajuda") cmd = "help";
 
@@ -493,8 +491,6 @@ static void runCommand(String line) {
     }
   } else if (cmd == "icon") {
     s.clockIcon = constrain(arg.toInt(), 0, cfg::CLOCK_ICON_COUNT - 1);
-  } else if (cmd == "seconds") {
-    s.secondsBar = arg.toInt() != 0;
   } else {
     Serial.println("Unknown command. Type: help");
     return;
