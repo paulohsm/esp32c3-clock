@@ -24,7 +24,13 @@ void fbPixel(int x, int y, bool on = true);
 void fbIcon(int x, const uint8_t icon[8]);
 uint8_t fbTextWidth(const char* text);         // width in columns (4x6 font)
 void fbText(int x, int y, const char* text);   // draw with the 4x6 font
-void fbPush();                                 // send to the matrix (only if changed)
+// How a new frame replaces the current one.
+//   NONE  = instantly
+//   ROLL  = changed columns of the content area roll up (odometer effect);
+//           the icon area changes instantly
+//   SLIDE = the whole frame rolls up (screen change)
+enum Transition : uint8_t { NONE, ROLL, SLIDE };
+void fbPush(Transition t = NONE);              // send to the matrix (only if changed)
 
 // ---- Scroller: 5x7 font text scrolling right→left, optionally beside an icon ----
 // iconFrames: nullptr for full width, or an array of 8x8 icons animated every framePeriodMs.

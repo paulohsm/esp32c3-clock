@@ -21,12 +21,16 @@ const char* const TIMBRE_NAMES[cfg::TIMBRE_COUNT] = {"classic", "high", "soft", 
 
 const Note S_CONFIRM[] = {{1500, 50}, {0, 30}, {2200, 80}, {0, 0}};
 const Note S_ERROR[]   = {{400, 220}, {0, 0}};
+// Emergency siren: two alternating tones, then a short pause.
+const Note S_SIREN[]   = {{1800, 220}, {1200, 220}, {1800, 220}, {1200, 220},
+                          {1800, 220}, {1200, 220}, {0, 350}, {0, 0}};
 Note s_click[] = {{2000, 25}, {0, 0}};
 
 // Volume = pulse width (8-bit duty). 128 = 50% = loudest.
 const uint8_t DUTY[cfg::VOLUME_MAX] = {3, 8, 20, 50, 128};
 
 const Note* seq = nullptr;
+bool loud = false;  // play at full volume regardless of the setting (emergency)
 uint8_t idx = 0;
 uint32_t noteStart = 0;
 
@@ -35,7 +39,7 @@ constexpr uint8_t LEDC_CH = 0;
 #endif
 
 void output(uint16_t freq) {
-  uint8_t duty = DUTY[cfg::s.volume - 1];
+  uint8_t duty = loud ? DUTY[cfg::VOLUME_MAX - 1] : DUTY[cfg::s.volume - 1];
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   if (freq == 0) { ledcWrite(PIN_BUZZER, 0); return; }
   ledcChangeFrequency(PIN_BUZZER, freq, 8);
@@ -47,7 +51,8 @@ void output(uint16_t freq) {
 #endif
 }
 
-void start(const Note* s) {
+void start(const Note* s, bool atFullVolume = false) {
+  loud = atFullVolume;
   seq = s;
   idx = 0;
   noteStart = millis();
@@ -90,6 +95,7 @@ void chime()   { start(TIMBRES[cfg::s.timbre]); }
 void chime(uint8_t timbre) { start(TIMBRES[timbre < cfg::TIMBRE_COUNT ? timbre : 0]); }
 void confirm() { start(S_CONFIRM); }
 void error()   { start(S_ERROR); }
+void siren()   { start(S_SIREN, true); }
 bool isPlaying() { return seq != nullptr; }
 
 const char* timbreName(uint8_t index) {

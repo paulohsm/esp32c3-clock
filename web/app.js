@@ -8,6 +8,9 @@ const LAST_KEY = 'esp32c3-clock.last';
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const TIMBRES = ['Clássico', 'Agudo', 'Suave', 'Carrilhão'];
 const MINUTES = [5, 10, 15, 20, 30, 60];
+// ASCII expressions: the matrix font has no emoji, but these read well on it.
+const EMOTES = [':)', ':D', ';)', ':(', ":'(", ':P', ':O', ':*', '<3', 'xD', '^_^', '-_-',
+  'o_O', 'B)', '\\o/', '(y)', 'zzz', '\\(^o^)/', '(>_<)', '(^_^)/', '<(^_^)>', '(-_-)zzz'];
 const QUOTE_NAMES = { USD: 'Dólar', EUR: 'Euro', GBP: 'Libra', BTC: 'Bitcoin', ETH: 'Ethereum' };
 
 // WMO weather codes (Open-Meteo) → Portuguese description.
@@ -125,6 +128,7 @@ function connect(user, pass) {
     client.subscribe('clock/+/schedules', { qos: 1 });
     client.subscribe('clock/+/ack', { qos: 1 });
     client.subscribe('clock/+/data/+', { qos: 1 });
+    client.subscribe('clock/+/alert', { qos: 1 });
     if ($('#loginView').hidden === false) {
       if ($('#remember').checked) store(STORE_KEY, { user, pass });
       const last = load(LAST_KEY);
@@ -183,7 +187,7 @@ function onMessage(topic, buf) {
   const [, id, kind] = m;
   const text = buf.toString();
   const dev = devices[id] || (devices[id] = {
-    online: false, info: {}, config: null, schedules: [], weather: null, quotes: {},
+    online: false, info: {}, config: null, schedules: [], weather: null, quotes: {}, alert: null,
   });
 
   let data = null;
@@ -198,6 +202,7 @@ function onMessage(topic, buf) {
     case 'schedules': dev.schedules = Array.isArray(data) ? data : []; break;
     case 'data/weather': dev.weather = data && data.valid ? data : null; break;
     case 'data/quotes': dev.quotes = data || {}; break;
+    case 'alert': dev.alert = data; break;
     case 'ack':
       if (id === current) handleAck(data);
       return;
@@ -215,6 +220,8 @@ const ACK_OK = {
   beep: 'Tocando…',
   sync: 'Atualizando dados…',
   reboot: 'Reiniciando…',
+  show: 'Mostrando no relógio.',
+  alert: 'Alerta atualizado.',
 };
 function handleAck(a) {
   if (!a) return;
@@ -267,6 +274,7 @@ function renderDevice(kind) {
   if (!kind || kind === 'schedules') renderSchedules(d.schedules);
   if (!kind || kind === 'info' || kind === 'online') renderInfo(d);
   if (!kind || kind.startsWith('data/')) renderNow(d);
+  if (!kind || kind === 'alert') renderAlert(d.alert);
 }
 
 function renderConfig(c) {
@@ -322,6 +330,32 @@ function renderNow(d) {
     const t = new Date(Math.max(...at) * 1000);
     row('Atualizado', t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
   }
+}
+
+const ENDED_BY = { touch: 'desarmado no relógio (toque)', app: 'cancelado pelo app', timeout: 'terminou por tempo' };
+
+function hhmm(epoch) {
+  return new Date(epoch * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderAlert(a) {
+  const st = $('#alertStatus');
+  $('#alertCancel').hidden = !(a && a.active);
+  $('#alertSend').hidden = !!(a && a.active);
+  if (!a || !a.text) { st.hidden = true; return; }
+  st.hidden = false;
+  st.classList.toggle('on', !!a.active);
+  st.textContent = a.active
+    ? `ATIVO até ${hhmm(a.until)}: "${a.text}"`
+    : `Último alerta "${a.text}": ${ENDED_BY[a.endedBy] || a.endedBy} às ${hhmm(a.at)}.`;
+}
+
+function sendAlert() {
+  const text = $('#alertText').value.trim();
+  if (!text) { toast('Escreva o texto do alerta.', true); return; }
+  const secs = Number($('#alertSecs').value);
+  if (!confirm(`Disparar alerta de emergência por ${$('#alertSecs').selectedOptions[0].text}?`)) return;
+  publish('cmd/alert', { text, seconds: secs });
 }
 
 function onMaskChange(group) {
@@ -411,6 +445,23 @@ function renderInfo(d) {
 
 // ------------------------------------------------------------ actions
 
+// Insert at the cursor, with spaces around so it doesn't glue to words.
+function insertEmote(e) {
+  const ta = $('#msgText');
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? ta.value.length;
+  const before = ta.value.slice(0, start);
+  const after = ta.value.slice(end);
+  const pre = before && !before.endsWith(' ') ? ' ' : '';
+  const post = after.startsWith(' ') ? '' : ' ';
+  const text = pre + e + post;
+  if ((before + text + after).length > ta.maxLength) { toast('Mensagem no limite de tamanho.', true); return; }
+  ta.value = before + text + after;
+  const pos = before.length + text.length;
+  ta.focus();
+  ta.setSelectionRange(pos, pos);
+}
+
 function sendMessage() {
   const text = $('#msgText').value.trim();
   if (!text) { toast('Escreva uma mensagem.', true); return; }
@@ -468,6 +519,9 @@ function buildStaticControls() {
     $('#cfgTimbre').append(el('option', { value: i }, name));
     $('#schedTimbre').append(el('option', { value: i }, name));
   });
+  for (const e of EMOTES) {
+    $('#emotes').append(el('button', { type: 'button', onclick: () => insertEmote(e) }, e));
+  }
   DAY_NAMES.forEach((name, i) => {
     $('#schedDaysWrap').append(el('label', {},
       el('input', Object.assign({ type: 'checkbox', value: i }, i >= 1 && i <= 5 ? { checked: '' } : {})), name));
@@ -485,6 +539,9 @@ function wire() {
   for (const b of $$('.tabs button')) b.addEventListener('click', () => selectTab(b.dataset.tab));
 
   $('#msgSend').addEventListener('click', sendMessage);
+  $('#alertSend').addEventListener('click', sendAlert);
+  $('#alertCancel').addEventListener('click', () => publish('cmd/alert', { cancel: true }));
+  for (const b of $$('[data-show]')) b.addEventListener('click', () => publish('cmd/show', b.dataset.show));
   $('#schedForm').addEventListener('submit', addSchedule);
   $('#schedWhen').addEventListener('change', () => {
     $('#schedDateWrap').hidden = $('#schedWhen').value !== 'date';

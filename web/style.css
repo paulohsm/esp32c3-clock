@@ -124,6 +124,16 @@ code { color: var(--accent-2); }
 }
 .toast.err { border-color: var(--danger); color: var(--danger); }
 
+.emotes { display: flex; flex-wrap: wrap; gap: 6px; }
+.emotes button { min-height: 36px; padding: 4px 10px; font-family: ui-monospace, "DejaVu Sans Mono", monospace; font-size: .9rem; }
+.show-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.show-grid button { min-height: 44px; }
+
+.alert-card { border-color: #5a2a2a; }
+.alert-btn { background: var(--danger); border-color: var(--danger); color: #1b0d08; font-weight: 700; }
+.alert-status { margin: 0; padding: 10px 12px; border-radius: 10px; background: #1a1411; border: 1px solid var(--line); }
+.alert-status.on { border-color: var(--danger); color: var(--danger); font-weight: 650; }
+
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 .place { display: flex; flex-direction: column; gap: 2px; }
 .place .muted { font-size: .85rem; }

@@ -46,6 +46,13 @@ struct Settings {
   uint8_t screens      = SCREENS_ALL;     // screens in the touch cycle
   bool    rainAlert    = true;            // morning "take an umbrella" warning
   uint8_t rainHour     = 7;               // hour of the rain warning
+
+  // Motion
+  bool     anim        = true;            // rolling digits, sliding screens, seconds dot
+  uint8_t  scrollSpeed = 3;               // 1 (slow) .. 5 (fast)
+  uint16_t autoEvery   = 60;              // carousel period in seconds (0 = off)
+  uint8_t  autoFor     = 2;               // seconds each carousel screen stays
+  uint8_t  autoScreens = SB_DATE;         // screens shown by the carousel
 };
 
 extern Settings s;

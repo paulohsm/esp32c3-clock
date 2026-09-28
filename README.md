@@ -63,6 +63,8 @@ To change networks later, **hold the touch pad (or BOOT) while powering on**, or
 | Short flash | Command received |
 | Solid | Wi-Fi setup portal open |
 
+On the matrix, a crossed-out Wi-Fi icon blinks twice every 5 seconds in place of the clock icon when there is no internet (Wi-Fi down, or the broker unreachable for over a minute).
+
 ## MQTT
 
 Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the serial monitor at boot and shown on a double tap. All topics live under `clock/<id>/`.
@@ -78,6 +80,9 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 | `ack` | clock → reply to each command: `{"cmd","ok","error?","id?"}` |
 | `cmd/msg` | → clock | plain text, or `{"text":"...","beep":true,"repeat":2}` |
 | `cmd/schedule` | → clock | see below |
+| `cmd/alert` | → clock | emergency alert: `{"text":"...","seconds":120}` (10–3600 s); `{"cancel":true}` stops it. Scrolls with a blinking warning icon and a full-volume siren until a touch on the sensor, cancel or timeout |
+| `alert` | clock → | alert state (retained): `{"active":true,"text","started","until"}` or `{"active":false,"text","endedBy":"touch"\|"app"\|"timeout","at"}` |
+| `cmd/show` | → clock | show a screen now: `date`, `longdate`, `weather`, `rain`, `uv`, `sun` or `quotes` |
 | `cmd/beep` | → clock | empty, or `{"timbre":3}` |
 | `config/set` | → clock | any subset of the settings, e.g. `{"brightness":4,"rotated":true}` |
 | `cmd/sync` | → clock | refresh weather/quotes and republish everything |
@@ -96,7 +101,7 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 
 `days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
 
-**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes), `rainAlert`, `rainHour`.
+**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes), `rainAlert`, `rainHour`, `anim` (rolling digits, sliding screens, seconds dot on the dial), `scrollSpeed` (1–5), `autoEvery` (carousel period in seconds, 0 = off), `autoFor` (seconds per carousel screen), `autoScreens` (same bits as `screens`, long date excluded).
 
 ## Internet data
 
@@ -134,9 +139,17 @@ cd ~/Projetos/esp32c3-clock/web && python3 -m http.server 8000
 
 It is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that changes `web/` (repo → Settings → Pages → Source: GitHub Actions). On the phone, open the page and use "Add to Home screen".
 
+## Icons
+
+Icons are 6×6 drawings in `tools/gen_icons.py` (`#` = LED on). Most have 2–6 animation frames. After editing, regenerate the header:
+
+```bash
+cd ~/Projetos/esp32c3-clock && python3 tools/gen_icons.py
+```
+
 ## Serial commands
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `teste`.
 
 ## MQTT credentials (HiveMQ)
 

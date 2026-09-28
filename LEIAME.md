@@ -63,6 +63,8 @@ Para trocar de rede depois, **segure o toque (ou o BOOT) ao ligar**, ou mande `w
 | Piscada curta | Comando recebido |
 | Aceso fixo | Portal de configuração de Wi-Fi aberto |
 
+Na matriz, quando não há internet (Wi-Fi caído, ou broker inacessível há mais de 1 minuto), um ícone de Wi-Fi riscado pisca duas vezes a cada 5 segundos no lugar do ícone do relógio.
+
 ## MQTT em poucas palavras
 
 - **Broker**: o "correio" central, que é o seu HiveMQ Cloud. Os aparelhos não falam entre si diretamente; todos se conectam ao broker. Por isso o relógio funciona de fora da sua rede: tanto ele quanto o celular saem para a internet até o broker.
@@ -88,6 +90,9 @@ Cada relógio tem um ID tirado do chip, por exemplo `clock-a1b2c3`. Ele aparece 
 | `ack` | relógio → resposta a cada comando: `{"cmd","ok","error?","id?"}` |
 | `cmd/msg` | → relógio | texto puro, ou `{"text":"...","beep":true,"repeat":2}` |
 | `cmd/schedule` | → relógio | veja abaixo |
+| `cmd/alert` | → relógio | alerta de emergência: `{"text":"...","seconds":120}` (10 a 3600 s); `{"cancel":true}` para. O texto rola com um ícone de alerta piscando e sirene no volume máximo até alguém tocar no sensor, o app cancelar ou o tempo acabar |
+| `alert` | relógio → | estado do alerta (retido): `{"active":true,"text","started","until"}` ou `{"active":false,"text","endedBy":"touch"\|"app"\|"timeout","at"}` |
+| `cmd/show` | → relógio | mostra uma tela agora: `date`, `longdate`, `weather`, `rain`, `uv`, `sun` ou `quotes` |
 | `cmd/beep` | → relógio | vazio, ou `{"timbre":3}` |
 | `config/set` | → relógio | qualquer parte das configurações, por exemplo `{"brightness":4,"rotated":true}` |
 | `cmd/sync` | → relógio | busca de novo tempo e cotações e republica tudo |
@@ -113,7 +118,7 @@ O relógio **lê** `config/set` e **publica** `config`. São dois tópicos separ
 
 Os agendamentos ficam gravados no relógio e funcionam mesmo sem internet.
 
-**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutos), `quotesAtNight`, `quotes` (soma de bits: 1 dólar, 2 euro, 4 libra, 8 bitcoin, 16 ethereum), `screens` (soma de bits: 1 data, 2 data por extenso, 4 tempo, 8 chuva, 16 UV, 32 sol, 64 cotações), `rainAlert`, `rainHour`.
+**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutos), `quotesAtNight`, `quotes` (soma de bits: 1 dólar, 2 euro, 4 libra, 8 bitcoin, 16 ethereum), `screens` (soma de bits: 1 data, 2 data por extenso, 4 tempo, 8 chuva, 16 UV, 32 sol, 64 cotações), `rainAlert`, `rainHour`, `anim` (números que rolam, telas que deslizam, segundos no ícone), `scrollSpeed` (1–5), `autoEvery` (período do carrossel em segundos, 0 = desligado), `autoFor` (segundos por tela do carrossel), `autoScreens` (mesmos bits de `screens`, sem a data por extenso).
 
 ## Dados da internet
 
@@ -151,9 +156,17 @@ cd ~/Projetos/esp32c3-clock/web && python3 -m http.server 8000
 
 O app é publicado no GitHub Pages pelo arquivo `.github/workflows/pages.yml`, a cada `push` na `main` que altere a pasta `web/`. É preciso ativar uma vez: repositório → Settings → Pages → Source: **GitHub Actions**. No celular, abra a página e use "Adicionar à tela inicial".
 
+## Ícones
+
+Os ícones são desenhos 6×6 no arquivo `tools/gen_icons.py` (`#` = LED aceso). A maioria tem de 2 a 6 quadros de animação. Depois de editar, gere de novo o arquivo do firmware:
+
+```bash
+cd ~/Projetos/esp32c3-clock && python3 tools/gen_icons.py
+```
+
 ## Comandos pelo serial
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `msg`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `atualizar`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <seg> [dur]`, `msg`, `alert <seg> <texto>` (`alert 0` para), `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `teste`.
 
 ## Credenciais MQTT (HiveMQ)
 

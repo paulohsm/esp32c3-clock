@@ -20,6 +20,13 @@ void clamp() {
   if (s.quotesMin < 5) s.quotesMin = 5;
   if (s.quotesMin > 120) s.quotesMin = 120;
   if (s.rainHour > 23) s.rainHour = 7;
+  if (s.scrollSpeed < 1) s.scrollSpeed = 1;
+  if (s.scrollSpeed > 5) s.scrollSpeed = 5;
+  if (s.autoEvery != 0 && s.autoEvery < 10) s.autoEvery = 10;
+  if (s.autoEvery > 3600) s.autoEvery = 3600;
+  if (s.autoFor < 1) s.autoFor = 1;
+  if (s.autoFor > 30) s.autoFor = 30;
+  s.autoScreens &= SCREENS_ALL & ~SB_LONGDATE;  // the long date scrolls; not for the carousel
   s.quotes &= QUOTES_ALL;
   s.screens &= SCREENS_ALL;
   if (!(s.lat >= -90 && s.lat <= 90 && s.lon >= -180 && s.lon <= 180)) {  // also catches NaN
@@ -53,6 +60,11 @@ void load() {
   s.screens      = prefs.getUChar("screens", SCREENS_ALL);
   s.rainAlert    = prefs.getBool("rain", true);
   s.rainHour     = prefs.getUChar("rainh", 7);
+  s.anim         = prefs.getBool("anim", true);
+  s.scrollSpeed  = prefs.getUChar("sspeed", 3);
+  s.autoEvery    = prefs.getUShort("autoev", 60);
+  s.autoFor      = prefs.getUChar("autofor", 2);
+  s.autoScreens  = prefs.getUChar("autoscr", SB_DATE);
   prefs.end();
   clamp();
 }
@@ -79,6 +91,11 @@ void save() {
   prefs.putUChar("screens", s.screens);
   prefs.putBool("rain", s.rainAlert);
   prefs.putUChar("rainh", s.rainHour);
+  prefs.putBool("anim", s.anim);
+  prefs.putUChar("sspeed", s.scrollSpeed);
+  prefs.putUShort("autoev", s.autoEvery);
+  prefs.putUChar("autofor", s.autoFor);
+  prefs.putUChar("autoscr", s.autoScreens);
   prefs.end();
 }
 
@@ -104,6 +121,11 @@ void toJson(JsonObject o) {
   o["screens"]      = s.screens;
   o["rainAlert"]    = s.rainAlert;
   o["rainHour"]     = s.rainHour;
+  o["anim"]         = s.anim;
+  o["scrollSpeed"]  = s.scrollSpeed;
+  o["autoEvery"]    = s.autoEvery;
+  o["autoFor"]      = s.autoFor;
+  o["autoScreens"]  = s.autoScreens;
 }
 
 template <typename T>
@@ -149,6 +171,11 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "screens", s.screens);
   changed |= setIf(o, "rainAlert", s.rainAlert);
   changed |= setIf(o, "rainHour", s.rainHour);
+  changed |= setIf(o, "anim", s.anim);
+  changed |= setIf(o, "scrollSpeed", s.scrollSpeed);
+  changed |= setIf(o, "autoEvery", s.autoEvery);
+  changed |= setIf(o, "autoFor", s.autoFor);
+  changed |= setIf(o, "autoScreens", s.autoScreens);
   clamp();
   return changed;
 }

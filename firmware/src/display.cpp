@@ -245,25 +245,88 @@ void fbText(int x, int y, const char* text) {
   }
 }
 
-void fbPush() {
+// Write a full frame to the matrix and remember it as what is on screen.
+static void writeFrame(const uint8_t* cols) {
+  // MD_MAX72XX: column 0 is the RIGHTMOST column of the matrix.
+  mx->control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
+  for (uint8_t x = 0; x < WIDTH; x++) {
+    if (rotated) mx->setColumn(x, reverseBits(cols[x]));
+    else mx->setColumn(WIDTH - 1 - x, cols[x]);
+  }
+  mx->control(MD_MAX72XX::UPDATE, MD_MAX72XX::ON);
+  memcpy(shown, cols, WIDTH);
+  fbDirty = false;
+}
+
+// ------------------------------------------------------------ transitions
+// Each animated column scrolls up: the old content leaves through the top while
+// the new one enters from the bottom (an odometer / flip-clock effect).
+static constexpr uint8_t ANIM_FRAMES  = 8;
+static constexpr uint8_t ANIM_STEP_MS = 28;
+static uint8_t animFrom[WIDTH], animTo[WIDTH];
+static uint32_t animMask = 0;      // bit x = column x is animating
+static int8_t animFrame = -1;      // -1 = idle
+static uint32_t animLast = 0;
+
+static void renderAnimFrame() {
+  uint8_t frame[WIDTH];
+  uint8_t k = animFrame;
+  for (uint8_t x = 0; x < WIDTH; x++) {
+    if (animMask & (1UL << x)) frame[x] = (uint8_t)((animFrom[x] >> k) | (animTo[x] << (8 - k)));
+    else frame[x] = animTo[x];
+  }
+  writeFrame(frame);
+}
+
+static void cancelAnim() { animFrame = -1; }
+
+void fbPush(Transition t) {
   bool wasText = textMode;
   if (textMode) {
     textMode = false;
     textBuf[0] = '\0';
     P.displayClear();
+    cancelAnim();
+    writeFrame(fb);
+    return;
   }
-  if (!wasText && !fbDirty && memcmp(fb, shown, sizeof(fb)) == 0) return;
 
-  // MD_MAX72XX: column 0 is the RIGHTMOST column of the matrix.
-  mx->control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
+  if (animFrame >= 0) {
+    // An animation is running. If the new frame only differs in columns that are
+    // not rolling (an icon frame, the blinking colon), just retarget it.
+    bool onlyStill = true;
+    for (uint8_t x = 0; x < WIDTH; x++) {
+      if (fb[x] != animTo[x] && (animMask & (1UL << x))) { onlyStill = false; break; }
+    }
+    if (t == NONE || onlyStill) {
+      memcpy(animTo, fb, WIDTH);
+      return;
+    }
+  }
+  if (!wasText && !fbDirty && memcmp(fb, shown, WIDTH) == 0) return;
+
+  if (t == NONE || fbDirty) {
+    cancelAnim();
+    writeFrame(fb);
+    return;
+  }
+
+  uint32_t mask = 0;
   for (uint8_t x = 0; x < WIDTH; x++) {
-    if (rotated) mx->setColumn(x, reverseBits(fb[x]));
-    else mx->setColumn(WIDTH - 1 - x, fb[x]);
+    // ROLL animates only the content area; the icon changes instantly.
+    if (t == SLIDE || (x >= CONTENT_X && fb[x] != shown[x])) mask |= 1UL << x;
   }
-  mx->control(MD_MAX72XX::UPDATE, MD_MAX72XX::ON);
-
-  memcpy(shown, fb, sizeof(fb));
-  fbDirty = false;
+  if (!mask) {
+    cancelAnim();
+    writeFrame(fb);
+    return;
+  }
+  memcpy(animFrom, shown, WIDTH);
+  memcpy(animTo, fb, WIDTH);
+  animMask = mask;
+  animFrame = 1;
+  animLast = millis();
+  renderAnimFrame();
 }
 
 // ------------------------------------------------------------- scroller
@@ -295,6 +358,7 @@ void scrollStart(const char* utf8Text, const uint8_t* const* iconFrames, uint8_t
   sFramePeriod = framePeriodMs;
   sLastStep = sLastFrame = millis();
   sActive = true;
+  cancelAnim();
   renderScroll();
 }
 
@@ -306,6 +370,15 @@ bool update() {
   if (textMode) {
     P.displayAnimate();
     return false;
+  }
+  if (animFrame >= 0 && millis() - animLast >= ANIM_STEP_MS) {
+    animLast = millis();
+    if (++animFrame >= ANIM_FRAMES) {
+      animFrame = -1;
+      writeFrame(animTo);
+    } else {
+      renderAnimFrame();
+    }
   }
   if (!sActive) return false;
 

@@ -73,7 +73,42 @@
             </select>
           </label>
         </div>
+        <div class="emotes" id="emotes" aria-label="Expressões"></div>
         <button id="msgSend" class="primary">Enviar agora</button>
+      </div>
+
+      <div data-panel="msg" class="panel card alert-card">
+        <h3>⚠ Alerta de emergência</h3>
+        <p class="muted">Texto rolando sem parar, ícone piscando e sirene no volume máximo, até alguém tocar no sensor ou o tempo acabar.</p>
+        <p id="alertStatus" class="alert-status" hidden></p>
+        <label>Texto do alerta
+          <input id="alertText" maxlength="120" placeholder="Ex.: Desligue o fogo!">
+        </label>
+        <label>Duração
+          <select id="alertSecs">
+            <option value="30">30 segundos</option>
+            <option value="60" selected>1 minuto</option>
+            <option value="120">2 minutos</option>
+            <option value="300">5 minutos</option>
+            <option value="600">10 minutos</option>
+            <option value="1800">30 minutos</option>
+          </select>
+        </label>
+        <button id="alertSend" class="alert-btn">Disparar alerta</button>
+        <button id="alertCancel" hidden>Cancelar alerta</button>
+      </div>
+
+      <div data-panel="msg" class="panel card">
+        <h3>Mostrar agora no relógio</h3>
+        <div class="show-grid">
+          <button data-show="date">Data</button>
+          <button data-show="longdate">Data por extenso</button>
+          <button data-show="weather">Tempo</button>
+          <button data-show="rain">Chuva</button>
+          <button data-show="uv">UV</button>
+          <button data-show="sun">Nascer/pôr do sol</button>
+          <button data-show="quotes">Cotações</button>
+        </div>
       </div>
 
       <!-- Schedules -->
@@ -123,6 +158,43 @@
               <option value="2">Quadrante do dia</option>
             </select>
           </label>
+        </div>
+        <div class="card">
+          <h3>Movimento</h3>
+          <label class="switch"><input data-key="anim" type="checkbox"> Animações (números que rolam, telas que deslizam, segundos no ícone)</label>
+          <label>Velocidade da rolagem de texto <span class="val" data-val="scrollSpeed"></span>
+            <input data-key="scrollSpeed" type="range" min="1" max="5" step="1">
+          </label>
+          <h3>Carrossel automático</h3>
+          <p class="muted">Mostra estas telas de tempos em tempos e volta para a hora.</p>
+          <div class="row">
+            <label>A cada
+              <select data-key="autoEvery">
+                <option value="0">Desligado</option>
+                <option value="15">15 s</option>
+                <option value="30">30 s</option>
+                <option value="60">1 min</option>
+                <option value="120">2 min</option>
+                <option value="300">5 min</option>
+              </select>
+            </label>
+            <label>Por
+              <select data-key="autoFor">
+                <option value="2">2 s</option>
+                <option value="3">3 s</option>
+                <option value="5">5 s</option>
+                <option value="8">8 s</option>
+              </select>
+            </label>
+          </div>
+          <div class="checks" data-mask="autoScreens">
+            <label class="check"><input type="checkbox" data-bit="0"> Data</label>
+            <label class="check"><input type="checkbox" data-bit="2"> Tempo agora</label>
+            <label class="check"><input type="checkbox" data-bit="3"> Chance de chuva</label>
+            <label class="check"><input type="checkbox" data-bit="4"> Índice UV</label>
+            <label class="check"><input type="checkbox" data-bit="5"> Nascer e pôr do sol</label>
+            <label class="check"><input type="checkbox" data-bit="6"> Cotações</label>
+          </div>
         </div>
         <div class="card">
           <h3>Som</h3>
@@ -206,7 +278,7 @@
           <dl id="infoList" class="info"></dl>
         </div>
         <div class="row">
-          <button id="syncBtn">Atualizar</button>
+          <button id="syncBtn">Atualizar dados</button>
           <button id="rebootBtn" class="danger">Reiniciar relógio</button>
         </div>
       </div>
