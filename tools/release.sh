@@ -21,19 +21,26 @@ fi
 (cd firmware && pio run)
 ls -l "$BIN"
 
-if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
-  git tag "$TAG"
-  git push origin "$TAG"
-  gh release create "$TAG" "$BIN#firmware.bin" --repo paulohsm/esp32c3-clock \
-    --title "$TAG" --notes "Firmware $VERSION"
-  echo "Published $TAG. The app will offer it within 6 h, or at once with 'Verificar atualização'."
-else
+web_steps() {
   cat <<MSG
 
-gh is not available or not logged in. Publish through the website:
+Publish the release through the website (logged in as the repo owner):
   1. Open https://github.com/paulohsm/esp32c3-clock/releases/new
-  2. Tag: $TAG (create new tag), title: $TAG
+  2. Tag: $TAG (pick it if it already exists, or create it), title: $TAG
   3. Attach: $(pwd)/$BIN   (the file must be named firmware.bin)
   4. Click "Publish release".
 MSG
+}
+
+# Tag first (the website step can then just pick it).
+git tag "$TAG"
+git push origin "$TAG"
+
+if command -v gh >/dev/null && gh auth status >/dev/null 2>&1 &&
+   gh release create "$TAG" "$BIN" --repo paulohsm/esp32c3-clock \
+     --title "$TAG" --notes "Firmware $VERSION"; then
+  echo "Published $TAG. The app will offer it within 6 h, or at once with 'Verificar atualização'."
+else
+  echo "Could not publish with gh (not installed, not logged in, or no permission)."
+  web_steps
 fi
