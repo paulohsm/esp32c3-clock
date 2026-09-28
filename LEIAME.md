@@ -9,7 +9,7 @@ Relógio de mesa com ESP32-C3 SuperMini e matriz de LEDs MAX7219 32×8. É contr
 ```
 esp32c3-clock/
 ├── firmware/   # PlatformIO — ESP32-C3
-├── web/        # app do celular (PWA, MQTT via WebSocket 8884) — etapa 3
+├── web/        # app do celular (PWA, MQTT via WebSocket 8884)
 ├── worker/     # Cloudflare Worker: clima, cotações, cripto → MQTT — etapa 4
 └── docs/       # esquemas, fotos
 ```
@@ -128,6 +128,19 @@ mosquitto_pub -h $H -p 8883 --cafile $CA -u clock_app -P 'SENHA' \
   -t 'clock/clock-a1b2c3/cmd/msg' -m 'Olá de fora de casa!'
 ```
 
+## App do celular (`web/`)
+
+É uma página web que funciona como app (PWA): só HTML, CSS e JS, sem etapa de compilação. Ela se conecta ao HiveMQ por WebSocket (porta 8884). O login usa uma credencial do HiveMQ, como a `clock_app`. A opção "Lembrar neste aparelho" guarda usuário e senha no navegador (localStorage).
+
+Para testar no computador:
+
+```bash
+cd ~/Projetos/esp32c3-clock/web && python3 -m http.server 8000
+# abra http://localhost:8000
+```
+
+O app é publicado no GitHub Pages pelo arquivo `.github/workflows/pages.yml`, a cada `push` na `main` que altere a pasta `web/`. É preciso ativar uma vez: repositório → Settings → Pages → Source: **GitHub Actions**. No celular, abra a página e use "Adicionar à tela inicial".
+
 ## Comandos pelo serial
 
 `help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `msg`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `teste`.
@@ -147,7 +160,7 @@ A senha do relógio fica em `firmware/include/secrets.h`, que não vai para o gi
 - [x] **Etapa 1**: NTP, telas de hora e data, toque, bipe de hora (4 timbres), modo noite, brilho limitado (6/15), orientação, LED de status, portal Wi-Fi
 - [x] **Etapa 1.1**: fonte 4×6 de largura fixa, tela com ícone + conteúdo, ícone de progresso do dia (a barrinha de segundos foi removida depois)
 - [x] **Etapa 2**: MQTT com TLS: mensagens na hora, agendamentos/alarmes gravados na flash, configurações remotas, status online (LWT)
-- [ ] **Etapa 3**: app do celular (PWA no Cloudflare Pages) com login
+- [x] **Etapa 3**: app do celular (PWA no GitHub Pages) com login
 - [ ] **Etapa 4**: Worker: clima (Open-Meteo: chuva, UV, nascer/pôr do sol), dólar/euro, Ibovespa, cripto, inscritos do YouTube
 - [ ] **Etapa 5**: fase da lua, posição real do Sol e da Lua pelas coordenadas, ícones animados (clima, lua, Jogo da Vida, chuva de pixels), pomodoro, cronômetro, contagem regressiva
 - [ ] **Etapa 6**: OTA via GitHub Releases, aviso do portão, notificações no celular (ntfy)

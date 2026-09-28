@@ -9,7 +9,7 @@ Desk clock built with an ESP32-C3 SuperMini and a 32×8 MAX7219 LED matrix. It c
 ```
 esp32c3-clock/
 ├── firmware/   # PlatformIO — ESP32-C3
-├── web/        # phone app (PWA, MQTT over WebSocket 8884) — stage 3
+├── web/        # phone app (PWA, MQTT over WebSocket 8884)
 ├── worker/     # Cloudflare Worker: weather, FX rates, crypto → MQTT — stage 4
 └── docs/       # diagrams, photos
 ```
@@ -111,6 +111,19 @@ mosquitto_pub -h $H -p 8883 --cafile $CA -u clock_app -P 'PASSWORD' \
   -t 'clock/clock-a1b2c3/cmd/msg' -m 'Hello from outside!'
 ```
 
+## Phone app (`web/`)
+
+A static PWA (HTML/CSS/JS, no build step) that connects to HiveMQ over WebSocket (port 8884). Log in with an HiveMQ credential such as `clock_app`; "remember on this device" stores it in the browser's localStorage.
+
+Run locally:
+
+```bash
+cd ~/Projetos/esp32c3-clock/web && python3 -m http.server 8000
+# open http://localhost:8000
+```
+
+It is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that changes `web/` (repo → Settings → Pages → Source: GitHub Actions). On the phone, open the page and use "Add to Home screen".
+
 ## Serial commands
 
 `help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `teste`.
@@ -130,7 +143,7 @@ The clock's password goes in `firmware/include/secrets.h`, which is git-ignored.
 - [x] **Stage 1**: NTP, time/date screens, touch, hourly chime (4 timbres), night mode, brightness cap (6/15), orientation, status LED, Wi-Fi portal
 - [x] **Stage 1.1**: fixed-width 4×6 font, icon + content layout, day-progress clock icon (seconds bar later removed)
 - [x] **Stage 2**: MQTT over TLS: instant messages, schedules/alarms stored in flash, remote settings, online status (LWT)
-- [ ] **Stage 3**: phone app (PWA on Cloudflare Pages) with login
+- [x] **Stage 3**: phone app (PWA on GitHub Pages) with login
 - [ ] **Stage 4**: Worker: weather (Open-Meteo: rain, UV, sunrise/sunset), USD/EUR, Ibovespa, crypto, YouTube subscribers
 - [ ] **Stage 5**: moon phase, real Sun/Moon position from coordinates, animated icons (weather, moon, Game of Life, pixel rain), pomodoro, stopwatch, countdown
 - [ ] **Stage 6**: OTA via GitHub Releases, gate status, phone notifications (ntfy)
