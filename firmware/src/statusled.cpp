@@ -6,7 +6,7 @@ namespace {
 
 Ticker blinker;
 Ticker flashOff;
-statusled::Mode current = statusled::SOLID;  // força a 1ª aplicação
+statusled::Mode current = statusled::SOLID;  // forces the first set() to apply
 bool lit = false;
 
 void write(bool on) {
@@ -26,8 +26,8 @@ void begin() {
   set(OFF);
 }
 
-// Ticker roda em segundo plano: o LED continua piscando
-// mesmo durante trechos bloqueantes (conexão Wi-Fi, portal).
+// Ticker runs in the background: the LED keeps blinking
+// even during blocking code (Wi-Fi connection, portal, TLS handshake).
 void set(Mode mode) {
   if (mode == current) return;
   current = mode;

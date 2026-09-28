@@ -6,24 +6,24 @@
 namespace {
 
 struct Note {
-  uint16_t freq;  // Hz (0 = pausa)
-  uint16_t ms;    // duração; {0,0} encerra a sequência
+  uint16_t freq;  // Hz (0 = rest)
+  uint16_t ms;    // duration; {0,0} ends the sequence
 };
 
-// Timbres do bipe de hora
-const Note T_CLASSICO[]  = {{2000, 70}, {0, 60}, {2000, 70}, {0, 0}};
-const Note T_AGUDO[]     = {{2700, 160}, {0, 0}};
-const Note T_SUAVE[]     = {{880, 120}, {0, 40}, {660, 180}, {0, 0}};
-const Note T_CARRILHAO[] = {{1319, 180}, {1047, 180}, {1175, 180}, {784, 380}, {0, 0}};
+// Hourly chime timbres
+const Note T_CLASSIC[]  = {{2000, 70}, {0, 60}, {2000, 70}, {0, 0}};
+const Note T_HIGH[]     = {{2700, 160}, {0, 0}};
+const Note T_SOFT[]     = {{880, 120}, {0, 40}, {660, 180}, {0, 0}};
+const Note T_CHIMES[] = {{1319, 180}, {1047, 180}, {1175, 180}, {784, 380}, {0, 0}};
 
-const Note* const TIMBRES[cfg::TIMBRE_COUNT] = {T_CLASSICO, T_AGUDO, T_SUAVE, T_CARRILHAO};
-const char* const TIMBRE_NAMES[cfg::TIMBRE_COUNT] = {"classico", "agudo", "suave", "carrilhao"};
+const Note* const TIMBRES[cfg::TIMBRE_COUNT] = {T_CLASSIC, T_HIGH, T_SOFT, T_CHIMES};
+const char* const TIMBRE_NAMES[cfg::TIMBRE_COUNT] = {"classic", "high", "soft", "chimes"};
 
 const Note S_CONFIRM[] = {{1500, 50}, {0, 30}, {2200, 80}, {0, 0}};
 const Note S_ERROR[]   = {{400, 220}, {0, 0}};
 Note s_click[] = {{2000, 25}, {0, 0}};
 
-// Volume = largura do pulso (duty) em 8 bits. 128 = 50% = mais alto.
+// Volume = pulse width (8-bit duty). 128 = 50% = loudest.
 const uint8_t DUTY[cfg::VOLUME_MAX] = {3, 8, 20, 50, 128};
 
 const Note* seq = nullptr;
@@ -72,7 +72,7 @@ void update() {
   if (!seq) return;
   if (millis() - noteStart < seq[idx].ms) return;
   idx++;
-  if (seq[idx].freq == 0 && seq[idx].ms == 0) {  // fim
+  if (seq[idx].freq == 0 && seq[idx].ms == 0) {  // end
     output(0);
     seq = nullptr;
     return;
@@ -87,6 +87,7 @@ void click() {
 }
 
 void chime()   { start(TIMBRES[cfg::s.timbre]); }
+void chime(uint8_t timbre) { start(TIMBRES[timbre < cfg::TIMBRE_COUNT ? timbre : 0]); }
 void confirm() { start(S_CONFIRM); }
 void error()   { start(S_ERROR); }
 bool isPlaying() { return seq != nullptr; }

@@ -1,14 +1,15 @@
 #pragma once
 #include <Arduino.h>
 
-// Buzzer passivo tocado por PWM (LEDC), sem bloquear o loop.
+// Passive buzzer driven by PWM (LEDC), non-blocking.
 namespace sound {
 
 void begin();
-void update();                  // chamar em todo loop()
+void update();                  // call on every loop()
 
-void click();                   // retorno curto de toque
-void chime();                   // bipe de hora (depende do timbre escolhido)
+void click();                   // short touch feedback
+void chime();                   // hourly chime using the configured timbre
+void chime(uint8_t timbre);     // chime with a specific timbre
 void confirm();
 void error();
 bool isPlaying();

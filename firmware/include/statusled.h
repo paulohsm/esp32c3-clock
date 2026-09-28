@@ -1,12 +1,12 @@
 #pragma once
 #include <Arduino.h>
 
-// LED azul da placa (GPIO 8) como indicador de estado.
-//   FAST  = conectando ao Wi-Fi
-//   SLOW  = Wi-Fi ok, aguardando serviço (NTP agora; MQTT na etapa 2)
-//   OFF   = tudo conectado
-//   SOLID = portal de configuração de Wi-Fi aberto
-//   flash() = piscada curta: comando recebido (só quando está OFF)
+// On-board blue LED (GPIO 8) as a status indicator.
+//   FAST    = connecting to Wi-Fi
+//   SLOW    = Wi-Fi ok, waiting for time (NTP) or MQTT
+//   OFF     = everything connected
+//   SOLID   = Wi-Fi setup portal open
+//   flash() = short blink: command received (only while OFF)
 namespace statusled {
 
 enum Mode : uint8_t { OFF, FAST, SLOW, SOLID };

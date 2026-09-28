@@ -1,86 +1,136 @@
 # esp32c3-clock
 
-Relógio de mesa com ESP32-C3 SuperMini e matriz de LEDs MAX7219 32×8. É controlado de qualquer lugar via MQTT (HiveMQ Cloud).
+*[Leia em português](LEIAME.md)*
 
-## Estrutura
+Desk clock built with an ESP32-C3 SuperMini and a 32×8 MAX7219 LED matrix. It can be controlled from anywhere over MQTT (HiveMQ Cloud).
+
+## Layout
 
 ```
 esp32c3-clock/
-├── firmware/   # PlatformIO — ESP32-C3 (etapa 1 pronta)
-├── web/        # app do celular (PWA, MQTT via WebSocket 8884) — etapa 3
-├── worker/     # Cloudflare Worker: clima, cotações, cripto → MQTT — etapa 4
-└── docs/       # esquemas, tópicos, fotos
+├── firmware/   # PlatformIO — ESP32-C3
+├── web/        # phone app (PWA, MQTT over WebSocket 8884) — stage 3
+├── worker/     # Cloudflare Worker: weather, FX rates, crypto → MQTT — stage 4
+└── docs/       # diagrams, photos
 ```
 
-## Ligações
+## Wiring
 
-| Componente | Pino | ESP32-C3 |
+| Part | Pin | ESP32-C3 |
 |---|---|---|
-| Matriz | VCC / GND | 5V / GND |
-| Matriz | DIN / CS / CLK | GPIO 6 / 7 / 4 |
-| Toque TTP223 | VCC / GND / SIG | 3.3V / GND / GPIO 5 |
-| Buzzer passivo | + / − | GPIO 1 / GND |
-| LED azul (placa) | — | GPIO 8 (LOW = aceso) |
-| Botão BOOT (placa) | — | GPIO 9 |
+| Matrix | VCC / GND | 5V / GND |
+| Matrix | DIN / CS / CLK | GPIO 6 / 7 / 4 |
+| TTP223 touch | VCC / GND / SIG | 3.3V / GND / GPIO 5 |
+| Passive buzzer | + / − | GPIO 1 / GND |
+| Blue LED (on board) | — | GPIO 8 (LOW = on) |
+| BOOT button (on board) | — | GPIO 9 |
 
-## Compilar e gravar
+## Build and flash
 
 ```bash
-cd firmware
-pio run                              # compila
-pio run -t upload                    # grava
-pio device monitor                   # monitor serial (115200)
+cd ~/Projetos/esp32c3-clock/firmware
+cp include/secrets.example.h include/secrets.h   # once; then edit the MQTT password
+pio run -t upload
+pio device monitor
 ```
 
-Se o upload não achar a placa: segure **BOOT**, aperte e solte **RESET**, solte **BOOT** e grave de novo. No Fedora, a porta aparece como `/dev/ttyACM0`. Se der erro de permissão:
-`sudo usermod -aG dialout $USER` (e faça logout/login).
+If the upload can't find the board: hold **BOOT**, press and release **RESET**, release **BOOT**, and flash again. On Fedora the port is `/dev/ttyACM0`. For permission errors, run `sudo usermod -aG dialout $USER`, then log out and back in.
 
-## Primeiro uso (Wi-Fi)
+## First boot (Wi-Fi)
 
-1. A matriz mostra **WIFI** e o LED azul fica aceso.
-2. No celular, conecte na rede **Relogio-Config** (senha `relogio123`).
-3. O portal abre sozinho; se não abrir, acesse `192.168.4.1`. Escolha sua rede e digite a senha.
+1. The matrix shows **WIFI** and the blue LED stays on.
+2. On your phone, join **Relogio-Config** (password `relogio123`).
+3. Pick your network in the portal. If it doesn't open by itself, go to `192.168.4.1`.
 
-Para trocar de rede depois, **segure o toque (ou o botão BOOT) ao ligar**. Outra opção é mandar `wifireset` pelo monitor serial.
+To change networks later, **hold the touch pad (or BOOT) while powering on**, or send `wifireset` over serial.
 
-## Toque
+## Touch
 
-| Gesto | Ação |
+| Gesture | Action |
 |---|---|
-| Toque curto | Próxima tela: hora → data → data por extenso |
-| Toque duplo | IP, sinal Wi-Fi e versão |
-| Toque longo | Liga/desliga o bipe de hora |
+| Tap | Next screen: time → date → long date |
+| Double tap | Name, IP, Wi-Fi signal, MQTT status, device id, version |
+| Long press | Toggle hourly chime |
+| Any, during an alarm | Stop the alarm |
 
-## LED azul
+## Blue LED
 
-| Padrão | Significado |
+| Pattern | Meaning |
 |---|---|
-| Pisca rápido | Conectando ao Wi-Fi |
-| Pisca lento | Wi-Fi ok, aguardando hora (NTP) / MQTT |
-| Apagado | Tudo conectado |
-| Piscada curta | Comando recebido |
-| Aceso fixo | Portal de configuração de Wi-Fi aberto |
+| Fast blink | Connecting to Wi-Fi |
+| Slow blink | Wi-Fi ok, waiting for time (NTP) or MQTT |
+| Off | Everything connected |
+| Short flash | Command received |
+| Solid | Wi-Fi setup portal open |
 
-## Comandos pelo monitor serial (provisórios, até o app ficar pronto)
+## MQTT
 
-`help`, `info`, `bri 0-6`, `rot 0|1`, `beep 0|1`, `timbre 0-3`, `vol 1-5`, `noite 0|1`, `noite 22 6`, `icone 0-2`, `segundos 0|1`, `msg texto`, `teste`, `wifireset`.
+Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the serial monitor at boot and shown on a double tap. All topics live under `clock/<id>/`.
 
-## Roteiro
-
-- [x] **Etapa 1** — NTP, telas de hora e data, toque, bipe de hora com 4 timbres, modo noite, brilho limitado (máx. 6/15), orientação normal/invertida, LED de status, portal Wi-Fi
-- [x] **Etapa 1.1** — fonte 4×6 de largura fixa, tela dividida (ícone 8×8 + conteúdo), ícone da hora (pizza do dia / relógio / quadrante), barrinha de segundos, ícone de calendário
-- [ ] **Etapa 2** — MQTT com TLS (HiveMQ): mensagem agora, agendamentos salvos na NVS, configurações remotas, status online/offline (LWT)
-- [ ] **Etapa 3** — App do celular (PWA no Cloudflare Pages) com login
-- [ ] **Etapa 4** — Worker: clima (Open-Meteo: chuva, UV, nascer/pôr do sol), dólar/euro, Ibovespa, cripto, inscritos do YouTube
-- [ ] **Etapa 5** — Fases da lua, posição real do Sol e da Lua pelas coordenadas, ícones e animações (clima, lua, Jogo da Vida, chuva de pixels), pomodoro, cronômetro, contagem regressiva
-- [ ] **Etapa 6** — OTA via GitHub Releases, aviso do portão, notificações (ntfy)
-
-## Credenciais MQTT (HiveMQ)
-
-| Usuário | Permissão | Uso |
+| Topic | Direction | Payload |
 |---|---|---|
-| `esp32c3sm_clock` | Publish and Subscribe | o relógio |
-| `clock_app` | Publish and Subscribe | app do celular |
-| `clock_worker` | Publish only | serviço de dados |
+| `online` | clock → | `1` / `0` (retained; `0` is the Last Will) |
+| `info` | clock → | `{"name","fw","ip","ssid","rssi","uptime","schedules"}` (retained) |
+| `config` | clock → | full settings (retained) |
+| `schedules` | clock → | list of schedules (retained) |
+| `ack` | clock → | reply to each command: `{"cmd","ok","error?","id?"}` |
+| `cmd/msg` | → clock | plain text, or `{"text":"...","beep":true,"repeat":2}` |
+| `cmd/schedule` | → clock | see below |
+| `cmd/beep` | → clock | empty, or `{"timbre":3}` |
+| `config/set` | → clock | any subset of the settings, e.g. `{"brightness":4,"rotated":true}` |
+| `cmd/sync` | → clock | republish `info`, `config`, `schedules` |
+| `cmd/reboot` | → clock | reboot |
 
-As senhas ficam em `firmware/include/secrets.h`, que não vai para o git. Veja o modelo em `secrets.example.h`.
+**Schedules** (`cmd/schedule`):
+
+```json
+{"action":"add","time":"07:30","text":"Wake up","alarm":true,"days":[1,2,3,4,5]}
+{"action":"add","time":"12:00","date":"2026-10-01","text":"Exam"}
+{"action":"add","time":"18:00","text":"Call mom"}
+{"action":"delete","id":3}
+{"action":"clear"}
+{"action":"list"}
+```
+
+`days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
+
+**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `secondsBar`.
+
+### Testing from Fedora
+
+```bash
+sudo dnf install mosquitto     # provides mosquitto_pub / mosquitto_sub
+H=4b9a673f16e84df093793b8d8768d7f6.s1.eu.hivemq.cloud
+CA=/etc/pki/tls/certs/ca-bundle.crt
+
+# watch everything the clocks publish
+mosquitto_sub -h $H -p 8883 --cafile $CA -u clock_app -P 'PASSWORD' -t 'clock/#' -v
+
+# send a message (replace the id)
+mosquitto_pub -h $H -p 8883 --cafile $CA -u clock_app -P 'PASSWORD' \
+  -t 'clock/clock-a1b2c3/cmd/msg' -m 'Hello from outside!'
+```
+
+## Serial commands
+
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `seconds`, `msg`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `segundos`, `teste`.
+
+## MQTT credentials (HiveMQ)
+
+| User | Permission | Used by |
+|---|---|---|
+| `esp32c3sm_clock` | Publish and Subscribe | the clock |
+| `clock_app` | Publish and Subscribe | phone app / testing |
+| `clock_worker` | Publish only | data service |
+
+The clock's password goes in `firmware/include/secrets.h`, which is git-ignored.
+
+## Roadmap
+
+- [x] **Stage 1**: NTP, time/date screens, touch, hourly chime (4 timbres), night mode, brightness cap (6/15), orientation, status LED, Wi-Fi portal
+- [x] **Stage 1.1**: fixed-width 4×6 font, icon + content layout, day-progress clock icon, seconds bar
+- [x] **Stage 2**: MQTT over TLS: instant messages, schedules/alarms stored in flash, remote settings, online status (LWT)
+- [ ] **Stage 3**: phone app (PWA on Cloudflare Pages) with login
+- [ ] **Stage 4**: Worker: weather (Open-Meteo: rain, UV, sunrise/sunset), USD/EUR, Ibovespa, crypto, YouTube subscribers
+- [ ] **Stage 5**: moon phase, real Sun/Moon position from coordinates, animated icons (weather, moon, Game of Life, pixel rain), pomodoro, stopwatch, countdown
+- [ ] **Stage 6**: OTA via GitHub Releases, gate status, phone notifications (ntfy)
