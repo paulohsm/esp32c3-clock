@@ -13,9 +13,19 @@ TAG="v$VERSION"
 BIN=firmware/.pio/build/supermini/firmware.bin
 echo "Firmware version: $VERSION"
 
+REPO=paulohsm/esp32c3-clock
+HAVE_GH=false
+if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then HAVE_GH=true; fi
+
+# Re-running is safe: an existing tag without a release is just published.
+TAG_EXISTS=false
 if git rev-parse "$TAG" >/dev/null 2>&1; then
-  echo "Tag $TAG already exists. Bump FW_VERSION in firmware/src/main.cpp first." >&2
-  exit 1
+  TAG_EXISTS=true
+  if $HAVE_GH && gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+    echo "Release $TAG is already published. Bump FW_VERSION in firmware/src/main.cpp first." >&2
+    exit 1
+  fi
+  echo "Tag $TAG exists but has no release yet: publishing it."
 fi
 
 (cd firmware && pio run)
@@ -33,11 +43,13 @@ MSG
 }
 
 # Tag first (the website step can then just pick it).
-git tag "$TAG"
-git push origin "$TAG"
+if ! $TAG_EXISTS; then
+  git tag "$TAG"
+  git push origin "$TAG"
+fi
 
-if command -v gh >/dev/null && gh auth status >/dev/null 2>&1 &&
-   gh release create "$TAG" "$BIN" --repo paulohsm/esp32c3-clock \
+if $HAVE_GH &&
+   gh release create "$TAG" "$BIN" --repo "$REPO" \
      --title "$TAG" --notes "Firmware $VERSION"; then
   echo "Published $TAG. The app will offer it within 6 h, or at once with 'Verificar atualização'."
 else
