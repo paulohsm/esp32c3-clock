@@ -13,6 +13,8 @@ void chime();                   // hourly chime using the configured timbre
 void chime(uint8_t timbre);     // chime with a specific timbre
 void confirm();
 void error();
+void connected();                // ascending tones: connection established
+void failed();                   // two falling tones: connection attempt failed
 void siren();                   // emergency siren, always at full volume
 bool isPlaying();
 

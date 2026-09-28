@@ -9,7 +9,8 @@ namespace mqtt_link {
 // topicSuffix: e.g. "cmd/msg"; payload is NUL-terminated.
 using Handler = void (*)(const char* topicSuffix, const char* payload, size_t len);
 
-void begin(const char* deviceId, Handler onMessage, void (*onConnect)());
+// onConnect: after every successful connection; onFail: after every failed attempt.
+void begin(const char* deviceId, Handler onMessage, void (*onConnect)(), void (*onFail)(int state));
 void loop(bool networkReady);  // networkReady = Wi-Fi up and clock set (TLS needs the date)
 bool connected();
 const char* baseTopic();       // "clock/<deviceId>"

@@ -17,6 +17,7 @@ static char base[48];
 static char clientId[32];
 static Handler handler = nullptr;
 static void (*connectCb)() = nullptr;
+static void (*failCb)(int) = nullptr;
 
 static uint32_t lastAttempt = 0;
 static uint32_t retryDelay = 2000;           // grows up to 60 s after failures
@@ -36,11 +37,12 @@ static void onRaw(char* topic, byte* payload, unsigned int len) {
   if (handler) handler(suffix, buf, n);
 }
 
-void begin(const char* deviceId, Handler onMessage, void (*onConnect)()) {
+void begin(const char* deviceId, Handler onMessage, void (*onConnect)(), void (*onFail)(int)) {
   snprintf(base, sizeof(base), "clock/%s", deviceId);
   strlcpy(clientId, deviceId, sizeof(clientId));
   handler = onMessage;
   connectCb = onConnect;
+  failCb = onFail;
 
   net.setCACert(ROOT_CA_PEM);
   net.setHandshakeTimeout(10);
@@ -65,6 +67,7 @@ static bool tryConnect() {
   if (!ok) {
     // -4 timeout, -2 network/TLS failure, 4 bad user/password, 5 not authorized
     Serial.printf("MQTT: failed, state=%d\n", client.state());
+    if (failCb) failCb(client.state());
     return false;
   }
   Serial.println("MQTT: connected");

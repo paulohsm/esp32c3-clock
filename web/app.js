@@ -6,7 +6,8 @@ const STORE_KEY = 'esp32c3-clock.creds';
 const LAST_KEY = 'esp32c3-clock.last';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const TIMBRES = ['Clássico', 'Agudo', 'Suave', 'Carrilhão'];
+const TIMBRES = ['Clássico (bip-bip)', 'Ding-dong', 'Campainha', 'Big Ben', 'Cuco',
+  'Micro-ondas', 'Notificação', 'Moeda', 'Suave', 'Passarinho'];
 const MINUTES = [5, 10, 15, 20, 30, 60];
 // ASCII expressions: the matrix font has no emoji, but these read well on it.
 const EMOTES = [':)', ':D', ';)', ':(', ":'(", ':P', ':O', ':*', '<3', 'xD', '^_^', '-_-',

@@ -92,6 +92,7 @@ ANIMS = {
     'A_SUNRISE': (['SUNRISE', 'SUNRISE_B'], 400),
     'A_SUNSET': (['SUNSET', 'SUNSET_B'], 400),
     'A_ALERT': (['ALERT', 'BLANK'], 300),
+    'A_WIFI_FAIL': (['WIFI_OFF', 'BLANK'], 250),
     'A_UP': (['ARROW_UP', 'ARROW_UP_B'], 300),
     'A_DOWN': (['ARROW_DOWN', 'ARROW_DOWN_B'], 300),
 }

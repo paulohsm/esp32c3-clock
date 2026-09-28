@@ -23,7 +23,7 @@
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.7.1"
+#define FW_VERSION "0.8.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -201,12 +201,33 @@ static void publishQuotes() {
   publishJson("data/quotes", doc, true);
 }
 
+// Sounds for connection events are muted in night mode and never cut into an
+// alarm or emergency.
+static bool connectionSoundsOk() { return !nightActive && !alarmActive && !emergencyActive; }
+
+static void onMqttConnected() {
+  if (connectionSoundsOk()) sound::connected();
+}
+
+static void onMqttFailed(int state) {
+  if (connectionSoundsOk()) sound::failed();
+  if (!overlay && !display::isScrolling() && !alarmActive && !emergencyActive) {
+    showMessage("Falha na conexao", icons::A_WIFI_FAIL, 1);
+  }
+}
+
 static void onMqttConnect() {
   publishInfo();
   publishConfig();
   publishSchedules();
   if (feeds::weather.valid) publishWeather();
   publishQuotes();
+}
+
+// Every new MQTT session: publish the state and play the "connected" tones.
+static void onMqttSessionStart() {
+  onMqttConnect();
+  onMqttConnected();
 }
 
 // Called after any settings change (serial or MQTT).
@@ -760,7 +781,8 @@ static void printHelp() {
       "  bri <0-6>           brightness\n"
       "  rot <0|1>           orientation: 0 normal, 1 rotated 180\n"
       "  beep <0|1>          hourly chime\n"
-      "  timbre <0-3>        0 classic, 1 high, 2 soft, 3 chimes\n"
+      "  timbre <0-9>        0 classic, 1 ding-dong, 2 doorbell, 3 big ben, 4 cuckoo,\n"
+      "                      5 microwave, 6 notification, 7 coin, 8 soft, 9 bird\n"
       "  vol <1-5>           buzzer volume\n"
       "  night <0|1>         automatic night mode [noite]\n"
       "  night <start> <end> night mode hours, e.g. night 22 6\n"
@@ -951,7 +973,7 @@ void setup() {
   connectWiFi(forcePortal);
 
   configTzTime(TZ_INFO, "a.st1.ntp.br", "pool.ntp.org", "time.google.com");
-  mqtt_link::begin(deviceId, onMqttMessage, onMqttConnect);
+  mqtt_link::begin(deviceId, onMqttMessage, onMqttSessionStart, onMqttFailed);
 
   touch.setPressMs(800);
   touch.attachClick(onClick);
@@ -959,7 +981,6 @@ void setup() {
   touch.attachLongPressStart(onLongPress);
 
   statusled::set(statusled::SLOW);
-  sound::confirm();
   printHelp();
 }
 
@@ -969,7 +990,10 @@ void loop() {
   handleSerial();
 
   bool wifiUp = WiFi.status() == WL_CONNECTED;
-  mqtt_link::loop(wifiUp && timeOk);
+  // New connection attempts block for a few seconds, so they wait for a short
+  // message to finish scrolling (alarms and emergencies still reconnect).
+  bool busyScrolling = display::isScrolling() && !alarmActive && !emergencyActive;
+  mqtt_link::loop(wifiUp && timeOk && !busyScrolling);
 
   // A scroll finished: back to the clock.
   if (display::update()) {

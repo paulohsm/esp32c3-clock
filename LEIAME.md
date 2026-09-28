@@ -118,7 +118,7 @@ O relógio **lê** `config/set` e **publica** `config`. São dois tópicos separ
 
 Os agendamentos ficam gravados no relógio e funcionam mesmo sem internet.
 
-**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–3), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutos), `quotesAtNight`, `quotes` (soma de bits: 1 dólar, 2 euro, 4 libra, 8 bitcoin, 16 ethereum), `screens` (soma de bits: 1 data, 2 data por extenso, 4 tempo, 8 chuva, 16 UV, 32 sol, 64 cotações), `rainAlert`, `rainHour`, `anim` (números que rolam, telas que deslizam, segundos no ícone), `scrollSpeed` (1–5), `autoEvery` (período do carrossel em segundos, 0 = desligado), `autoFor` (segundos por tela do carrossel), `autoScreens` (mesmos bits de `screens`, sem a data por extenso).
+**Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–9: clássico, ding-dong, campainha, Big Ben, cuco, micro-ondas, notificação, moeda, suave, passarinho), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0–2), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutos), `quotesAtNight`, `quotes` (soma de bits: 1 dólar, 2 euro, 4 libra, 8 bitcoin, 16 ethereum), `screens` (soma de bits: 1 data, 2 data por extenso, 4 tempo, 8 chuva, 16 UV, 32 sol, 64 cotações), `rainAlert`, `rainHour`, `anim` (números que rolam, telas que deslizam, segundos no ícone), `scrollSpeed` (1–5), `autoEvery` (período do carrossel em segundos, 0 = desligado), `autoFor` (segundos por tela do carrossel), `autoScreens` (mesmos bits de `screens`, sem a data por extenso).
 
 ## Dados da internet
 

@@ -11,17 +11,42 @@ struct Note {
   uint16_t ms;    // duration; {0,0} ends the sequence
 };
 
-// Hourly chime timbres
-const Note T_CLASSIC[]  = {{2000, 70}, {0, 60}, {2000, 70}, {0, 0}};
-const Note T_HIGH[]     = {{2700, 160}, {0, 0}};
-const Note T_SOFT[]     = {{880, 120}, {0, 40}, {660, 180}, {0, 0}};
-const Note T_CHIMES[] = {{1319, 180}, {1047, 180}, {1175, 180}, {784, 380}, {0, 0}};
+// Note frequencies (Hz). Passive buzzers are loudest around 2–4 kHz, so most
+// melodies live in octaves 6 and 7.
+enum : uint16_t {
+  G5 = 784, A5 = 880, B5 = 988,
+  C6 = 1047, D6 = 1175, E6 = 1319, F6 = 1397, G6 = 1568, A6 = 1760, B6 = 1976,
+  C7 = 2093, D7 = 2349, E7 = 2637, G7 = 3136,
+};
 
-const Note* const TIMBRES[cfg::TIMBRE_COUNT] = {T_CLASSIC, T_HIGH, T_SOFT, T_CHIMES};
-const char* const TIMBRE_NAMES[cfg::TIMBRE_COUNT] = {"classic", "high", "soft", "chimes"};
+// Hourly chime / alarm tones ("timbres"). {0, n} = rest; {0, 0} ends.
+const Note T_CLASSIC[]  = {{2093, 90}, {0, 70}, {2093, 90}, {0, 0}};
+const Note T_DINGDONG[] = {{E7, 350}, {C7, 550}, {0, 0}};
+const Note T_DOORBELL[] = {{C6, 140}, {E6, 140}, {G6, 140}, {C7, 320}, {0, 0}};
+const Note T_BIGBEN[]   = {{E6, 280}, {C6, 280}, {D6, 280}, {G5, 520}, {0, 120},
+                           {G5, 280}, {D6, 280}, {E6, 280}, {C6, 600}, {0, 0}};
+const Note T_CUCKOO[]   = {{E7, 180}, {0, 60}, {C7, 320}, {0, 220},
+                           {E7, 180}, {0, 60}, {C7, 320}, {0, 0}};
+const Note T_MICROWAVE[] = {{2400, 180}, {0, 120}, {2400, 180}, {0, 120}, {2400, 180}, {0, 0}};
+const Note T_NOTIFY[]   = {{G6, 70}, {0, 30}, {C7, 160}, {0, 0}};
+const Note T_COIN[]     = {{B6, 80}, {E7, 380}, {0, 0}};
+const Note T_SOFT[]     = {{G6, 200}, {E6, 200}, {C6, 380}, {0, 0}};
+const Note T_BIRD[]     = {{3000, 35}, {3400, 35}, {3800, 50}, {0, 70},
+                           {3000, 35}, {3400, 35}, {3800, 50}, {0, 160},
+                           {3600, 40}, {3200, 40}, {2800, 70}, {0, 0}};
+
+const Note* const TIMBRES[cfg::TIMBRE_COUNT] = {
+    T_CLASSIC, T_DINGDONG, T_DOORBELL, T_BIGBEN, T_CUCKOO,
+    T_MICROWAVE, T_NOTIFY, T_COIN, T_SOFT, T_BIRD};
+const char* const TIMBRE_NAMES[cfg::TIMBRE_COUNT] = {
+    "classic", "ding-dong", "doorbell", "big ben", "cuckoo",
+    "microwave", "notification", "coin", "soft", "bird"};
 
 const Note S_CONFIRM[] = {{1500, 50}, {0, 30}, {2200, 80}, {0, 0}};
 const Note S_ERROR[]   = {{400, 220}, {0, 0}};
+// Connection established: ascending C–E–G–C. Connection failed: two falling notes.
+const Note S_CONNECTED[] = {{C6, 90}, {E6, 90}, {G6, 90}, {C7, 200}, {0, 0}};
+const Note S_FAILED[]    = {{A6, 160}, {0, 40}, {D6, 280}, {0, 0}};
 // Emergency siren: two alternating tones, then a short pause.
 const Note S_SIREN[]   = {{1800, 220}, {1200, 220}, {1800, 220}, {1200, 220},
                           {1800, 220}, {1200, 220}, {0, 350}, {0, 0}};
@@ -109,6 +134,8 @@ void chime(uint8_t timbre) { start(TIMBRES[timbre < cfg::TIMBRE_COUNT ? timbre :
 void confirm() { start(S_CONFIRM); }
 void error()   { start(S_ERROR); }
 void siren()   { start(S_SIREN, true); }
+void connected() { start(S_CONNECTED); }
+void failed()    { start(S_FAILED); }
 bool isPlaying() { return seq != nullptr; }
 
 const char* timbreName(uint8_t index) {

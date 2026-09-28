@@ -7,7 +7,7 @@ namespace cfg {
 
 constexpr uint8_t BRIGHT_MAX       = 6;   // brightness cap (MAX7219 scale 0..15) — spares the USB supply
 constexpr uint8_t BRIGHT_DEFAULT   = 2;
-constexpr uint8_t TIMBRE_COUNT     = 4;
+constexpr uint8_t TIMBRE_COUNT     = 10;
 constexpr uint8_t VOLUME_MAX       = 5;
 constexpr uint8_t CLOCK_ICON_COUNT = 3;
 constexpr size_t  NAME_LEN         = 24;
