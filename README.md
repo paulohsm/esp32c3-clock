@@ -63,15 +63,16 @@ Para trocar de rede depois, **segure o toque (ou o botão BOOT) ao ligar**. Outr
 
 ## Comandos pelo monitor serial (provisórios, até o app ficar pronto)
 
-`help`, `info`, `bri 0-6`, `rot 0|1`, `beep 0|1`, `timbre 0-3`, `vol 1-5`, `noite 0|1`, `noite 22 6`, `msg texto`, `teste`, `wifireset`.
+`help`, `info`, `bri 0-6`, `rot 0|1`, `beep 0|1`, `timbre 0-3`, `vol 1-5`, `noite 0|1`, `noite 22 6`, `icone 0-2`, `segundos 0|1`, `msg texto`, `teste`, `wifireset`.
 
 ## Roteiro
 
 - [x] **Etapa 1** — NTP, telas de hora e data, toque, bipe de hora com 4 timbres, modo noite, brilho limitado (máx. 6/15), orientação normal/invertida, LED de status, portal Wi-Fi
+- [x] **Etapa 1.1** — fonte 4×6 de largura fixa, tela dividida (ícone 8×8 + conteúdo), ícone da hora (pizza do dia / relógio / quadrante), barrinha de segundos, ícone de calendário
 - [ ] **Etapa 2** — MQTT com TLS (HiveMQ): mensagem agora, agendamentos salvos na NVS, configurações remotas, status online/offline (LWT)
 - [ ] **Etapa 3** — App do celular (PWA no Cloudflare Pages) com login
 - [ ] **Etapa 4** — Worker: clima (Open-Meteo: chuva, UV, nascer/pôr do sol), dólar/euro, Ibovespa, cripto, inscritos do YouTube
-- [ ] **Etapa 5** — Fases da lua, ícones e animações (clima, lua, Jogo da Vida, chuva de pixels), pomodoro, cronômetro, contagem regressiva
+- [ ] **Etapa 5** — Fases da lua, posição real do Sol e da Lua pelas coordenadas, ícones e animações (clima, lua, Jogo da Vida, chuva de pixels), pomodoro, cronômetro, contagem regressiva
 - [ ] **Etapa 6** — OTA via GitHub Releases, aviso do portão, notificações (ntfy)
 
 ## Credenciais MQTT (HiveMQ)

@@ -7,15 +7,17 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <OneButton.h>
+#include <math.h>
 #include <time.h>
 
 #include "config.h"
 #include "display.h"
+#include "icons.h"
 #include "pins.h"
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.1.0"
+#define FW_VERSION "0.2.0"
 
 static const char* HOSTNAME = "esp32c3-clock";
 static const char* AP_NAME  = "Relogio-Config";
@@ -87,29 +89,87 @@ static void goToScreen(Screen s) {
 
 // ----------------------------------------------------------------- telas
 
+// Layout: ícone 8x8 nas colunas 0–7, coluna 8 vazia, conteúdo nas colunas 9–31.
+static constexpr int CONTENT_X = 9;
+static constexpr int CONTENT_W = display::WIDTH - CONTENT_X;  // 23 colunas
+
+static int centerX(const char* text) {
+  return CONTENT_X + (CONTENT_W - display::fbTextWidth(text)) / 2;
+}
+
+// Ícone da hora: 0 = pizza do dia (fração de 24h, meia-noite no topo,
+// sentido horário), 1 = relógio estático, 2 = quadrante atual do dia.
+static void drawClockIcon(const tm& t) {
+  if (cfg::s.clockIcon == 1) {
+    display::fbIcon(0, icons::CLOCK);
+    return;
+  }
+  display::fbIcon(0, icons::DIAL_RING);
+  const float TWO_PI_F = 6.2831853f;
+  float dayFrac = (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec) / 86400.0f;
+  int quadrant = t.tm_hour / 6;
+
+  for (int y = 1; y <= 6; y++) {
+    for (int x = 1; x <= 6; x++) {
+      if (icons::DIAL_RING[y] & (0x80 >> x)) continue;  // é contorno
+      float dx = x + 0.5f - 4.0f;
+      float dy = y + 0.5f - 4.0f;
+      if (dx * dx + dy * dy > 9.0f) continue;          // fora do círculo interno
+      float a = atan2f(dx, -dy);                        // 0 = topo, cresce no sentido horário
+      if (a < 0) a += TWO_PI_F;
+      bool on = (cfg::s.clockIcon == 0)
+                    ? a < dayFrac * TWO_PI_F
+                    : (a >= quadrant * TWO_PI_F / 4 && a < (quadrant + 1) * TWO_PI_F / 4);
+      if (on) display::fbPixel(x, y);
+    }
+  }
+}
+
+static void renderClock(bool ok, const tm& t) {
+  display::fbClear();
+  int y = cfg::s.secondsBar ? 0 : 1;
+  if (!ok) {
+    display::fbIcon(0, icons::CLOCK);
+    display::fbText(centerX("--:--"), y, "--:--");
+    return;
+  }
+  drawClockIcon(t);
+
+  // "HH:MM" = 21 colunas. Desenhado em partes para o ':' piscar sem deslocar nada.
+  char hh[3], mm[3];
+  snprintf(hh, sizeof(hh), "%02d", t.tm_hour);
+  snprintf(mm, sizeof(mm), "%02d", t.tm_min);
+  int x = CONTENT_X + (CONTENT_W - 21) / 2;
+  display::fbText(x, y, hh);
+  if (t.tm_sec % 2 == 0) display::fbText(x + 10, y, ":");
+  display::fbText(x + 12, y, mm);
+
+  if (cfg::s.secondsBar) {
+    int n = (t.tm_sec + 1) * CONTENT_W / 60;  // 0..23 pixels ao longo do minuto
+    for (int i = 0; i < n; i++) display::fbPixel(CONTENT_X + i, 7);
+  }
+}
+
+static void renderDate(bool ok, const tm& t) {
+  display::fbClear();
+  display::fbIcon(0, icons::CALENDAR);
+  char txt[8];
+  if (ok) snprintf(txt, sizeof(txt), "%02d/%02d", t.tm_mday, t.tm_mon + 1);
+  else strlcpy(txt, "--/--", sizeof(txt));
+  display::fbText(centerX(txt), 1, txt);
+}
+
 static void renderStatic() {
   if (overlay || display::isScrolling()) return;
-  char txt[16];
   tm t;
   bool ok = getLocalTm(t);
 
   switch (screen) {
-    case SCR_CLOCK:
-      if (!ok) {
-        strlcpy(txt, "--:--", sizeof(txt));
-      } else {
-        char sep = (t.tm_sec % 2 == 0) ? ':' : CHAR_COLON_OFF;
-        snprintf(txt, sizeof(txt), "%02d%c%02d", t.tm_hour, sep, t.tm_min);
-      }
-      break;
-    case SCR_DATE:
-      if (!ok) strlcpy(txt, "--/--", sizeof(txt));
-      else snprintf(txt, sizeof(txt), "%02d/%02d", t.tm_mday, t.tm_mon + 1);
-      break;
-    default:
-      return;
+    case SCR_CLOCK: renderClock(ok, t); break;
+    case SCR_DATE:  renderDate(ok, t);  break;
+    default: return;
   }
-  display::showStatic(txt);
+  display::fbPush();
 }
 
 // ------------------------------------------------------------------ toque
@@ -155,6 +215,9 @@ static void printSettings() {
                 s.timbre, sound::timbreName(s.timbre), s.volume, cfg::VOLUME_MAX,
                 s.nightEnabled ? "on" : "off", s.nightStart, s.nightEnd,
                 nightActive ? "sim" : "nao");
+  static const char* const ICONES[] = {"pizza do dia", "relogio", "quadrante"};
+  Serial.printf("icone_hora=%u (%s)  barra_segundos=%s\n", s.clockIcon, ICONES[s.clockIcon],
+                s.secondsBar ? "on" : "off");
   Serial.printf("wifi=%s ip=%s rssi=%d  ntp=%s  versao=%s\n",
                 WiFi.status() == WL_CONNECTED ? "ok" : "desconectado",
                 WiFi.localIP().toString().c_str(), WiFi.RSSI(), timeOk ? "ok" : "aguardando",
@@ -172,6 +235,8 @@ static void printHelp() {
       "  vol <1-5>         volume do buzzer\n"
       "  noite <0|1>       modo noite automatico\n"
       "  noite <ini> <fim> horario do modo noite (ex.: noite 22 6)\n"
+      "  icone <0-2>       icone da hora: 0 pizza do dia, 1 relogio, 2 quadrante\n"
+      "  segundos <0|1>    barrinha de segundos\n"
       "  msg <texto>       exibe texto rolando\n"
       "  teste             toca o bipe de hora\n"
       "  wifireset         apaga o Wi-Fi salvo e reinicia no portal"));
@@ -221,6 +286,12 @@ static void runCommand(String line) {
       s.nightEnd = constrain(arg.substring(sp2 + 1).toInt(), 0, 23);
       s.nightEnabled = true;
     }
+    changed = true;
+  } else if (cmd == "icone") {
+    s.clockIcon = constrain(arg.toInt(), 0, cfg::CLOCK_ICON_COUNT - 1);
+    changed = true;
+  } else if (cmd == "segundos") {
+    s.secondsBar = arg.toInt() != 0;
     changed = true;
   } else if (cmd == "msg") {
     static char msgBuf[160];

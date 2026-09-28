@@ -17,6 +17,8 @@ void load() {
   s.nightEnabled = prefs.getBool("night", true);
   s.nightStart   = prefs.getUChar("nstart", 22);
   s.nightEnd     = prefs.getUChar("nend", 6);
+  s.clockIcon    = prefs.getUChar("cicon", 0);
+  s.secondsBar   = prefs.getBool("secbar", true);
   prefs.end();
 
   // Sanidade: nunca aceitar valores fora dos limites.
@@ -25,6 +27,7 @@ void load() {
   if (s.volume < 1 || s.volume > VOLUME_MAX) s.volume = 3;
   if (s.nightStart > 23) s.nightStart = 22;
   if (s.nightEnd > 23) s.nightEnd = 6;
+  if (s.clockIcon >= CLOCK_ICON_COUNT) s.clockIcon = 0;
 }
 
 void save() {
@@ -37,6 +40,8 @@ void save() {
   prefs.putBool("night", s.nightEnabled);
   prefs.putUChar("nstart", s.nightStart);
   prefs.putUChar("nend", s.nightEnd);
+  prefs.putUChar("cicon", s.clockIcon);
+  prefs.putBool("secbar", s.secondsBar);
   prefs.end();
 }
 
