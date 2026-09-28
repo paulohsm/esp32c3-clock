@@ -82,6 +82,7 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 | `cmd/schedule` | → clock | see below |
 | `cmd/alert` | → clock | emergency alert: `{"text":"...","seconds":120}` (10–3600 s); `{"cancel":true}` stops it. Scrolls with a blinking warning icon and a full-volume siren until a touch on the sensor, cancel or timeout |
 | `alert` | clock → | alert state (retained): `{"active":true,"text","started","until"}` or `{"active":false,"text","endedBy":"touch"\|"app"\|"timeout","at"}` |
+| `cmd/ota` | → clock | firmware update: `{"url":"https://github.com/paulohsm/esp32c3-clock/releases/download/vX.Y.Z/firmware.bin"}` — only URLs from this repo's releases are accepted; the clock shows the progress and reboots |
 | `cmd/show` | → clock | show a screen now: `date`, `longdate`, `weather`, `rain`, `uv`, `sun` or `quotes` |
 | `cmd/beep` | → clock | empty, or `{"timbre":3}` |
 | `config/set` | → clock | any subset of the settings, e.g. `{"brightness":4,"rotated":true}` |
@@ -139,6 +140,14 @@ cd ~/Projetos/esp32c3-clock/web && python3 -m http.server 8000
 
 It is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that changes `web/` (repo → Settings → Pages → Source: GitHub Actions). On the phone, open the page and use "Add to Home screen".
 
+## Firmware updates (OTA)
+
+The partition table (`min_spiffs.csv`) has two app slots, so the clock can install a new firmware over Wi-Fi. Changing the table the first time needs one USB flash; after that:
+
+1. Bump `FW_VERSION` in `firmware/src/main.cpp` (e.g. `1.0.1`) and commit.
+2. Run `tools/release.sh`. It builds and publishes the `firmware.bin` as a GitHub Release `v1.0.1` (with `gh` logged in as the repo owner), or prints the steps to do it on the website.
+3. In the app, **Info** shows "Atualização disponível" (checked on open and every 6 h, or with "Verificar atualização"). Tap **Atualizar firmware**: the clock downloads it, shows the progress and reboots.
+
 ## Icons
 
 Icons are 6×6 drawings in `tools/gen_icons.py` (`#` = LED on). Most have 2–6 animation frames. After editing, regenerate the header:
@@ -149,7 +158,7 @@ cd ~/Projetos/esp32c3-clock && python3 tools/gen_icons.py
 
 ## Serial commands
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `intro`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `intro`, `ota <url>`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `teste`.
 
 ## MQTT credentials (HiveMQ)
 

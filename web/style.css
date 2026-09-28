@@ -134,6 +134,16 @@ code { color: var(--accent-2); }
 .alert-status { margin: 0; padding: 10px 12px; border-radius: 10px; background: #1a1411; border: 1px solid var(--line); }
 .alert-status.on { border-color: var(--danger); color: var(--danger); font-weight: 650; }
 
+.update-card { margin-top: 14px; }
+.update-card.available { border-color: var(--ok); }
+.update-card.available #updateText { color: var(--ok); font-weight: 650; }
+#updateBtn { background: var(--ok); border-color: var(--ok); color: #0d1b12; font-weight: 700; }
+.tabs button.badge { position: relative; }
+.tabs button.badge::after {
+  content: ''; position: absolute; top: 6px; right: 8px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok);
+}
+
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 .place { display: flex; flex-direction: column; gap: 2px; }
 .place .muted { font-size: .85rem; }

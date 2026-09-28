@@ -92,6 +92,7 @@ Cada relógio tem um ID tirado do chip, por exemplo `clock-a1b2c3`. Ele aparece 
 | `cmd/schedule` | → relógio | veja abaixo |
 | `cmd/alert` | → relógio | alerta de emergência: `{"text":"...","seconds":120}` (10 a 3600 s); `{"cancel":true}` para. O texto rola com um ícone de alerta piscando e sirene no volume máximo até alguém tocar no sensor, o app cancelar ou o tempo acabar |
 | `alert` | relógio → | estado do alerta (retido): `{"active":true,"text","started","until"}` ou `{"active":false,"text","endedBy":"touch"\|"app"\|"timeout","at"}` |
+| `cmd/ota` | → relógio | atualização de firmware: `{"url":"https://github.com/paulohsm/esp32c3-clock/releases/download/vX.Y.Z/firmware.bin"}`. Só aceita endereços das Releases deste repositório; o relógio mostra o progresso e reinicia |
 | `cmd/show` | → relógio | mostra uma tela agora: `date`, `longdate`, `weather`, `rain`, `uv`, `sun` ou `quotes` |
 | `cmd/beep` | → relógio | vazio, ou `{"timbre":3}` |
 | `config/set` | → relógio | qualquer parte das configurações, por exemplo `{"brightness":4,"rotated":true}` |
@@ -156,6 +157,14 @@ cd ~/Projetos/esp32c3-clock/web && python3 -m http.server 8000
 
 O app é publicado no GitHub Pages pelo arquivo `.github/workflows/pages.yml`, a cada `push` na `main` que altere a pasta `web/`. É preciso ativar uma vez: repositório → Settings → Pages → Source: **GitHub Actions**. No celular, abra a página e use "Adicionar à tela inicial".
 
+## Atualização de firmware pela internet (OTA)
+
+A divisão da memória (`min_spiffs.csv`) tem duas áreas para o programa, e por isso o relógio consegue instalar um firmware novo pelo Wi-Fi. A troca da divisão exige uma gravação pelo cabo USB na primeira vez. Depois disso:
+
+1. Aumente `FW_VERSION` em `firmware/src/main.cpp` (por exemplo, `1.0.1`) e faça o commit.
+2. Rode `tools/release.sh`. Ele compila e publica o `firmware.bin` como uma Release `v1.0.1` no GitHub (com o `gh` logado como dono do repositório), ou mostra os passos para publicar pelo site.
+3. No app, a aba **Info** mostra "Atualização disponível". A verificação acontece ao abrir o app, a cada 6 horas ou pelo botão "Verificar atualização". Toque em **Atualizar firmware**: o relógio baixa o arquivo, mostra o progresso e reinicia.
+
 ## Ícones
 
 Os ícones são desenhos 6×6 no arquivo `tools/gen_icons.py` (`#` = LED aceso). A maioria tem de 2 a 6 quadros de animação. Depois de editar, gere de novo o arquivo do firmware:
@@ -166,7 +175,7 @@ cd ~/Projetos/esp32c3-clock && python3 tools/gen_icons.py
 
 ## Comandos pelo serial
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <seg> [dur]`, `msg`, `alert <seg> <texto>` (`alert 0` para), `intro`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <seg> [dur]`, `msg`, `alert <seg> <texto>` (`alert 0` para), `intro`, `ota <url>`, `test`, `wifireset`. Os nomes em português também funcionam: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `teste`.
 
 ## Credenciais MQTT (HiveMQ)
 

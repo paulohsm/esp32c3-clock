@@ -2,6 +2,8 @@
 'use strict';
 
 const BROKER_URL = 'wss://4b9a673f16e84df093793b8d8768d7f6.s1.eu.hivemq.cloud:8884/mqtt';
+const REPO = 'paulohsm/esp32c3-clock';          // firmware releases live here
+const UPDATE_CHECK_MS = 6 * 3600 * 1000;
 const STORE_KEY = 'esp32c3-clock.creds';
 const LAST_KEY = 'esp32c3-clock.last';
 
@@ -35,6 +37,9 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 let client = null;
 const devices = {};      // id -> { online, info, config, schedules, weather, quotes }
 let current = null;      // selected device id
+let latest = null;       // newest release: { version, url, notes } (null = unknown)
+let updateState = '';    // '' | 'checking' | 'error' | 'installing'
+let installingFrom = null;  // firmware version the clock had when we asked it to update
 
 // ------------------------------------------------------------ storage
 
@@ -220,12 +225,14 @@ const ACK_OK = {
   config: 'Ajuste salvo.',
   beep: 'Tocando…',
   sync: 'Atualizando dados…',
+  ota: 'Relógio baixando o firmware…',
   reboot: 'Reiniciando…',
   show: 'Mostrando no relógio.',
   alert: 'Alerta atualizado.',
 };
 function handleAck(a) {
   if (!a) return;
+  if (a.cmd === 'ota' && !a.ok) { updateState = ''; installingFrom = null; renderUpdate(); }
   if (a.ok) toast(ACK_OK[a.cmd] || 'OK');
   else toast('Erro: ' + (a.error || a.cmd), true);
 }
@@ -273,7 +280,7 @@ function renderDevice(kind) {
   $('#offlineBanner').hidden = d.online;
   if (!kind || kind === 'config') renderConfig(d.config);
   if (!kind || kind === 'schedules') renderSchedules(d.schedules);
-  if (!kind || kind === 'info' || kind === 'online') renderInfo(d);
+  if (!kind || kind === 'info' || kind === 'online') { renderInfo(d); renderUpdate(); }
   if (!kind || kind.startsWith('data/')) renderNow(d);
   if (!kind || kind === 'alert') renderAlert(d.alert);
 }
@@ -447,6 +454,83 @@ function renderInfo(d) {
   for (const [k, v] of rows) dl.append(el('dt', {}, k), el('dd', {}, String(v)));
 }
 
+// ------------------------------------------------------------ firmware update
+
+function cmpVersion(a, b) {
+  const pa = String(a).replace(/^v/, '').split('.').map(Number);
+  const pb = String(b).replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+async function checkUpdate(manual = false) {
+  updateState = 'checking';
+  renderUpdate();
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`,
+      { headers: { Accept: 'application/vnd.github+json' } });
+    if (r.status === 404) { latest = { version: '0.0.0' }; updateState = ''; renderUpdate(); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rel = await r.json();
+    const asset = (rel.assets || []).find((a) => a.name === 'firmware.bin');
+    latest = asset
+      ? { version: rel.tag_name.replace(/^v/, ''), url: asset.browser_download_url, notes: rel.name || rel.tag_name }
+      : { version: '0.0.0' };
+    updateState = '';
+    if (manual && !updateAvailable()) toast('O firmware já está na versão mais recente.');
+  } catch (e) {
+    updateState = 'error';
+  }
+  renderUpdate();
+}
+
+function updateAvailable(d = devices[current]) {
+  const fw = d && d.info && d.info.fw;
+  return !!(latest && latest.url && fw && cmpVersion(latest.version, fw) > 0);
+}
+
+function renderUpdate() {
+  const d = devices[current];
+  const fw = d && d.info && d.info.fw;
+  const avail = updateAvailable(d);
+  const text = $('#updateText');
+  const btn = $('#updateBtn');
+  $('#updateCard').classList.toggle('available', avail && updateState !== 'installing');
+  $('.tabs button[data-tab="info"]').classList.toggle('badge', avail && updateState !== 'installing');
+
+  if (updateState === 'installing') {
+    if (fw && installingFrom && fw !== installingFrom) {
+      toast(`Firmware atualizado para v${fw}.`);
+      updateState = '';
+      installingFrom = null;
+      return renderUpdate();
+    }
+    text.textContent = 'Instalando… o relógio baixa o arquivo e reinicia sozinho (cerca de 1 minuto). Não o desligue.';
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = !avail;
+  if (updateState === 'checking') text.textContent = 'Verificando atualizações…';
+  else if (updateState === 'error') text.textContent = 'Não foi possível consultar o GitHub. Tente de novo mais tarde.';
+  else if (!latest) text.textContent = 'Verificando atualizações…';
+  else if (avail) text.textContent = `Atualização disponível: v${latest.version} (instalada: v${fw}).`;
+  else text.textContent = fw ? `Firmware em dia (v${fw}).` : 'Aguardando informações do relógio…';
+}
+
+function startUpdate() {
+  const d = devices[current];
+  if (!updateAvailable(d)) return;
+  if (!d.online) { toast('O relógio está offline.', true); return; }
+  if (!confirm(`Instalar o firmware v${latest.version} no relógio? Ele vai reiniciar.`)) return;
+  installingFrom = d.info.fw;
+  updateState = 'installing';
+  publish('cmd/ota', { url: latest.url, version: latest.version });
+  renderUpdate();
+}
+
 // ------------------------------------------------------------ actions
 
 // Insert at the cursor, with spaces around so it doesn't glue to words.
@@ -565,6 +649,8 @@ function wire() {
     for (const cb of group.querySelectorAll('input[data-bit]')) cb.addEventListener('change', () => onMaskChange(group));
   }
   $('#gpsBtn').addEventListener('click', useGps);
+  $('#updateBtn').addEventListener('click', startUpdate);
+  $('#checkBtn').addEventListener('click', () => checkUpdate(true));
   $('#morningTime').addEventListener('change', () => {
     const [h, m] = $('#morningTime').value.split(':').map(Number);
     if (!Number.isNaN(h) && !Number.isNaN(m)) publish('config/set', { morningHour: h, morningMin: m });
@@ -578,6 +664,8 @@ function init() {
   buildStaticControls();
   wire();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  checkUpdate();
+  setInterval(checkUpdate, UPDATE_CHECK_MS);
 
   const saved = load(STORE_KEY);
   if (saved && saved.user) {

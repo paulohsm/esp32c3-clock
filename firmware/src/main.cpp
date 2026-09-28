@@ -18,12 +18,13 @@
 #include "feeds.h"
 #include "icons.h"
 #include "mqtt_link.h"
+#include "ota.h"
 #include "pins.h"
 #include "schedule.h"
 #include "sound.h"
 #include "statusled.h"
 
-#define FW_VERSION "0.9.1"
+#define FW_VERSION "1.0.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -512,6 +513,48 @@ static void onLongPress() {
   showMessage(cfg::s.hourlyBeep ? "Bipe de hora ligado" : "Bipe de hora desligado", icons::A_NOTE);
 }
 
+// ---------------------------------------------------------- firmware update
+
+static void drawOtaProgress(int pct) {
+  char txt[8];
+  snprintf(txt, sizeof(txt), "%d%%", pct);
+  display::fbClear();
+  display::fbIcon(0, icons::frame(icons::A_DOWN, true));
+  display::fbText(display::CONTENT_X + (display::CONTENT_W - display::fbTextWidth(txt)) / 2, 1,
+                  txt);
+  display::fbPush();
+}
+
+// Blocks for the whole download (~30–60 s), then reboots into the new firmware.
+static void runOta(const char* url) {
+  alarmActive = false;
+  overlay = false;
+  carouselOn = false;
+  introStep = INTRO_DONE;
+  display::scrollStop();
+  applyBrightness();
+  drawOtaProgress(0);
+  char error[96];
+  if (ota::update(url, drawOtaProgress, error, sizeof(error))) {
+    display::fbClear();
+    display::fbText(display::CONTENT_X, 1, "OK!");
+    display::fbIcon(0, icons::frame(icons::A_UP, false));
+    display::fbPush();
+    sound::connected();
+    delay(1500);
+    ESP.restart();
+  }
+  JsonDocument doc;
+  doc["cmd"] = "ota";
+  doc["ok"] = false;
+  doc["error"] = error;
+  publishJson("ack", doc, false);
+  sound::failed();
+  static char msg[128];
+  snprintf(msg, sizeof(msg), "Falha na atualizacao: %s", error);
+  showMessage(msg, icons::A_WIFI_FAIL, 1);
+}
+
 // ----------------------------------------------------------- MQTT in
 
 static void handleMessageCmd(const char* payload) {
@@ -598,6 +641,16 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     if (!text[0]) { publishAck("alert", false, "empty text"); return; }
     startEmergency(text, doc["seconds"] | 60);
     publishAck("alert", true);
+  } else if (strcmp(topic, "cmd/ota") == 0) {
+    // {"url":"https://github.com/paulohsm/esp32c3-clock/releases/download/v1.0.1/firmware.bin"}
+    JsonDocument doc;
+    if (deserializeJson(doc, payload)) { publishAck("ota", false, "invalid JSON"); return; }
+    static char url[256];
+    strlcpy(url, doc["url"] | "", sizeof(url));
+    if (!ota::urlAllowed(url)) { publishAck("ota", false, "URL not allowed"); return; }
+    if (emergencyActive) { publishAck("ota", false, "emergency alert active"); return; }
+    publishAck("ota", true);
+    runOta(url);
   } else if (strcmp(topic, "cmd/show") == 0) {
     // Show a screen now: payload "weather" | "rain" | "uv" | "sun" | "quotes" | "date" |
     // "longdate" (plain text or {"screen":"..."}).
@@ -892,6 +945,7 @@ static void printHelp() {
       "  auto <sec> [dur]    carousel every <sec> seconds (0 = off), <dur> s per screen\n"
       "  msg <text>          scroll a message\n"
       "  intro               replay the power-on introduction [apresentacao]\n"
+      "  ota <url>           install firmware from this project's GitHub Releases\n"
       "  alert <sec> <text>  emergency alert (touch to dismiss); 'alert 0' stops it [alerta]\n"
       "  test                play the hourly chime [teste]\n"
       "  wifireset           forget Wi-Fi and reboot into the setup portal"));
@@ -929,6 +983,13 @@ static void runCommand(String line) {
     return;
   }
   if (cmd == "intro") { introStep = INTRO_WAIT; return; }
+  if (cmd == "ota") {
+    static char url[256];
+    strlcpy(url, arg.c_str(), sizeof(url));
+    if (!ota::urlAllowed(url)) { Serial.printf("URL not allowed (must start with %s)\n", ota::ALLOWED_PREFIX); return; }
+    runOta(url);
+    return;
+  }
   if (cmd == "alert") {
     int sp2 = arg.indexOf(' ');
     long sec = (sp2 < 0 ? arg : arg.substring(0, sp2)).toInt();
