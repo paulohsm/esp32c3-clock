@@ -537,6 +537,43 @@ function renderSports(sp) {
 
 const normName = (n) => n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
+// Country names: national teams are listed in English ("Brazil"), but people search in
+// Portuguese ("Seleção Brasileira", "Brasil"). Built once from the browser's own tables.
+let countries = null;  // { pt: {normalized pt name: en name}, en: {normalized en name: pt name} }
+function countryTables() {
+  if (countries) return countries;
+  countries = { pt: {}, en: {} };
+  try {
+    const pt = new Intl.DisplayNames(['pt-BR'], { type: 'region' });
+    const en = new Intl.DisplayNames(['en'], { type: 'region' });
+    const A = 65;
+    for (let i = 0; i < 26; i++) {
+      for (let j = 0; j < 26; j++) {
+        const code = String.fromCharCode(A + i, A + j);
+        const p = pt.of(code), e = en.of(code);
+        if (!p || !e || p === code) continue;
+        countries.pt[normName(p)] = e;
+        countries.en[normName(e)] = p;
+      }
+    }
+  } catch (_) { /* old browser: no translation */ }
+  countries.pt.brasileira = 'Brazil';  // "Seleção Brasileira"
+  countries.pt.brasileiro = 'Brazil';
+  return countries;
+}
+
+// "Seleção Brasileira" → ["Seleção Brasileira", "Brazil"]; "Fortaleza" → ["Fortaleza"]
+function searchTerms(q) {
+  const n = normName(q).replace(/\b(selecao|selecoes|time|de|do|da|futebol)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const en = countryTables().pt[n];
+  return en && normName(en) !== normName(q) ? [q, en] : [q];
+}
+
+// National teams shown with their Portuguese name.
+function ptName(name) {
+  return countryTables().en[normName(name)] || name;
+}
+
 async function getJson(url) {
   const r = await fetch(url);
   if (r.status === 404) return null;  // Sofascore: "no games"
@@ -549,7 +586,7 @@ async function espnSearch(q) {
   return ((data && data.items) || [])
     .filter((t) => t.type === 'team' && ESPN_SPORTS[t.sport])
     .map((t) => ({
-      src: 'espn', id: String(t.id), name: t.displayName, sport: t.sport,
+      src: 'espn', id: String(t.id), name: ptName(t.displayName), sport: t.sport,
       league: t.league || t.defaultLeagueSlug || '',
     }));
 }
@@ -565,7 +602,7 @@ async function sofaSearch(q) {
   return ((data && data.results) || [])
     .filter((r) => r.type === 'team' && r.entity && r.entity.sport && SOFA_SPORTS[r.entity.sport.slug])
     .map(({ entity: e }) => ({
-      src: 'sofa', id: String(e.id), name: e.name, sport: e.sport.slug,
+      src: 'sofa', id: String(e.id), name: ptName(e.name), sport: e.sport.slug,
       country: countryName(e.country), women: e.gender === 'F',
     }));
 }
@@ -588,7 +625,12 @@ async function searchTeams(e) {
   const box = $('#spResults');
   $('#spPicked').hidden = true;
   box.replaceChildren(el('p', { class: 'muted' }, 'Buscando…'));
-  const [espn, sofa] = await Promise.allSettled([espnSearch(q), sofaSearch(q)]);
+  const terms = searchTerms(q);
+  const all = (fn) => Promise.all(terms.map(fn)).then((lists) => {
+    const seen = new Set();
+    return lists.flat().filter((t) => !seen.has(t.id) && seen.add(t.id));
+  });
+  const [espn, sofa] = await Promise.allSettled([all(espnSearch), all(sofaSearch)]);
   const a = espn.status === 'fulfilled' ? espn.value : [];
   const seen = new Set(a.map((t) => normName(t.name)));
   // A team ESPN has (with live score) is not repeated from Sofascore.
