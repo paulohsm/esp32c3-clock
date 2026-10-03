@@ -102,17 +102,20 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 {"action":"list"}
 ```
 
-**Games** (`cmd/sports`), with ESPN slugs and ids (the app looks them up):
+**Games** (`cmd/sports`). The app searches teams by name and sends these. ESPN teams use ESPN slugs and ids; football (soccer) teams use the league `all` (every competition, friendlies included). Teams ESPN doesn't have come from Sofascore (league `sofascore`): Sofascore refuses devices, so the app sends each one's next game with `next` whenever it is opened, and the clock warns before the game and at its start, without a live score.
 
 ```json
-{"action":"add","sport":"soccer","league":"bra.2","team":"6272","label":"Fortaleza · Série B"}
+{"action":"add","sport":"soccer","league":"all","team":"205","label":"Brasil · todos os jogos"}
+{"action":"add","sport":"basketball","league":"nba","team":"13","label":"Lakers · NBA"}
+{"action":"add","sport":"football","league":"sofascore","team":"32672","label":"Ferroviário · só agenda","event":"9000","start":1791168723,"home":"Floresta","away":"Ferroviário"}
+{"action":"next","team":"32672","event":"9001","start":1791600000,"home":"Ferroviário","away":"Fortaleza"}
 {"action":"add","sport":"soccer","league":"bra.1","event":"401841169","label":"São Paulo x Santos","start":1790982000,"home":"São Paulo","away":"Santos","homeAbbr":"SAO","awayAbbr":"SAN"}
 {"action":"remove","index":1}
 {"action":"clear"}
 {"action":"refresh"}
 ```
 
-A team follow shows the team's next game in that competition and moves on to the following one 3 hours after the final whistle. A one-game follow leaves the list 3 hours after the end.
+A team follow shows the team's next game and moves on to the following one 3 hours after the final whistle. A one-game follow leaves the list 3 hours after the end.
 
 `days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
 
@@ -125,7 +128,7 @@ The clock fetches its own data over HTTPS, with no API keys:
 - **Weather** from [Open-Meteo](https://open-meteo.com) for the configured location (the app's GPS button sets it), every `weatherMin` minutes: temperature, weather, rain chance (today and next 3 h), UV, sunrise/sunset.
 - **Quotes** from [AwesomeAPI](https://docs.awesomeapi.com.br) every `quotesMin` minutes, skipped during night mode unless `quotesAtNight`.
 - **Rain warning**: at `rainHour`:00, if today's rain chance is 60% or more, it scrolls "Leve guarda-chuva!" with a chime.
-- **Games** from ESPN's public JSON API (`site.web.api.espn.com`, unofficial and undocumented, so it may change): each followed team's next game every 6 h, and the score every minute from 15 minutes before the start until the end. Alerts: N minutes before, kick-off, each goal (a rising fanfare and a flashing ball), and the final score. The "Jogos" screen scrolls the upcoming games, the live score or the result.
+- **Games** from ESPN's public JSON API (`site.web.api.espn.com`, unofficial and undocumented, so it may change): each followed team's next game every 6 h, and the score every minute from 15 minutes before the start until the end. Teams only Sofascore has (lower divisions, state leagues, volleyball...) get their next game from the phone app, without a live score. Alerts: N minutes before, kick-off, each goal (a rising fanfare and a flashing ball), and the final score. The "Jogos" screen scrolls the upcoming games, the live score or the result.
 
 ### Testing from Fedora
 
@@ -192,7 +195,7 @@ The clock's password goes in `firmware/include/secrets.h`, which is git-ignored.
 - [x] **Stage 2**: MQTT over TLS: instant messages, schedules/alarms stored in flash, remote settings, online status (LWT)
 - [x] **Stage 3**: phone app (PWA on GitHub Pages) with login
 - [x] **Stage 4**: weather (Open-Meteo) and quotes (AwesomeAPI) fetched by the clock; GPS location, intervals, screens and quotes chosen in the app; rain warning
-- [x] **Stage 4.2**: sports: follow teams or games (football/soccer, basketball, American football, baseball, hockey) chosen in the app; alerts before the game, at kick-off, on each goal and at the end; "games" screen
+- [x] **Stage 4.2**: sports: teams searched by name in the app (ESPN with live score; Sofascore, schedule only) or single games; alerts before the game, at kick-off, on each goal and at the end; "games" screen
 - [ ] **Stage 4.1**: Ibovespa and YouTube subscribers (need API keys → server side)
 - [ ] **Stage 5**: moon phase, real Sun/Moon position from coordinates, animated icons (weather, moon, Game of Life, pixel rain), pomodoro, stopwatch, countdown
 - [ ] **Stage 6**: OTA via GitHub Releases, gate status, phone notifications (ntfy)

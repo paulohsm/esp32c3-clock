@@ -26,7 +26,7 @@
 #include "sports.h"
 #include "statusled.h"
 
-#define FW_VERSION "1.2.0"
+#define FW_VERSION "1.3.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -144,7 +144,7 @@ static void showMessage(const char* text, const icons::Anim& icon, uint8_t loops
 // Ball when a football (soccer) game is followed, trophy otherwise.
 static const icons::Anim& sportsIcon() {
   for (uint8_t i = 0; i < sports::followCount; i++) {
-    if (strcmp(sports::follows[i].sport, "soccer") == 0) return icons::A_BALL;
+    if (sports::isSoccer(sports::follows[i])) return icons::A_BALL;
   }
   return icons::A_TROPHY;
 }
@@ -409,7 +409,7 @@ static void onSportEvent(sports::Event ev, const sports::Follow& f, const sports
   else sportText[0] = '\0';
   strlcat(sportText, part, sizeof(sportText));
   sportCount++;
-  sportSoccer |= strcmp(f.sport, "soccer") == 0;
+  sportSoccer |= sports::isSoccer(f);
   Serial.printf("sports: %s\n", part);
 }
 
@@ -435,13 +435,15 @@ static void handleSportsCmd(const char* payload) {
     publishAck("sports", false, "invalid JSON");
     return;
   }
+  // "next" comes from the app by itself (a Sofascore team's next game): no beep, no reply.
+  bool quiet = strcmp(doc["action"] | "", "next") == 0;
   const char* error = nullptr;
   bool ok = sports::command(doc.as<JsonObjectConst>(), time(nullptr), error);
   if (ok) {
     publishSports();
-    sound::confirm();
+    if (!quiet) sound::confirm();
   }
-  publishAck("sports", ok, error);
+  if (!quiet) publishAck("sports", ok, error);
 }
 
 // -------------------------------------------------------------- touch

@@ -111,6 +111,18 @@ bool everyScore(const Follow& f) {
   return strcmp(f.sport, "soccer") == 0 || strcmp(f.sport, "hockey") == 0;
 }
 
+bool appFed(const Follow& f) { return strcmp(f.league, "sofascore") == 0; }
+
+bool isSoccer(const Follow& f) {
+  return strcmp(f.sport, "soccer") == 0 || (appFed(f) && strcmp(f.sport, "football") == 0);
+}
+
+// Do follows i and k have their games in the same ESPN league (one poll serves both)?
+static bool samePoll(uint8_t i, uint8_t k) {
+  return strcmp(follows[i].sport, follows[k].sport) == 0 &&
+         strcmp(games[i].league, games[k].league) == 0;
+}
+
 static bool sameLeague(const Follow& a, const Follow& b) {
   return strcmp(a.sport, b.sport) == 0 && strcmp(a.league, b.league) == 0;
 }
@@ -122,6 +134,7 @@ static void gameFromFollow(uint8_t i, uint32_t now) {
   g = Game();
   g.valid = true;
   strlcpy(g.id, f.event, sizeof(g.id));
+  strlcpy(g.league, f.league, sizeof(g.league));
   g.start = f.start;
   copyUtf8(g.home, f.home, sizeof(g.home));
   copyUtf8(g.away, f.away, sizeof(g.away));
@@ -129,6 +142,10 @@ static void gameFromFollow(uint8_t i, uint32_t now) {
   strlcpy(g.awayAbbr, f.awayAbbr, sizeof(g.awayAbbr));
   g.state = now < f.start ? PRE : UNKNOWN;  // already started: the first poll tells
   g.preDone = now >= f.start;
+  if (appFed(f)) {  // never polled: time decides
+    g.state = PRE;
+    g.startDone = now >= f.start;
+  }
 }
 
 // --------------------------------------------------------- state changes
@@ -190,14 +207,13 @@ static bool apply(uint8_t i, uint32_t now, uint8_t st, int16_t hs, int16_t as, u
 
 // Scoreboard header (site.web.api.espn.com/apis/v2/scoreboard/header): updates every
 // followed game of this league found in it. Bit i of 'found' = game i was there.
-bool parseHeader(JsonDocument& doc, const Follow& lf, uint32_t now, Notify notify,
-                 uint8_t& found) {
+bool parseHeader(JsonDocument& doc, uint8_t ref, uint32_t now, Notify notify, uint8_t& found) {
   bool changed = false;
   for (JsonObjectConst ev : doc["sports"][0]["leagues"][0]["events"].as<JsonArrayConst>()) {
     const char* id = ev["id"] | "";
     for (uint8_t i = 0; i < followCount; i++) {
       Game& g = games[i];
-      if (!g.valid || strcmp(g.id, id) != 0 || !sameLeague(follows[i], lf)) continue;
+      if (!g.valid || strcmp(g.id, id) != 0 || !samePoll(i, ref)) continue;
       found |= 1 << i;
       int16_t hs = -1, as = -1;
       for (JsonObjectConst c : ev["competitors"].as<JsonArrayConst>()) {
@@ -213,14 +229,14 @@ bool parseHeader(JsonDocument& doc, const Follow& lf, uint32_t now, Notify notif
 }
 
 // Full scoreboard of one day (fallback when the header no longer lists a game).
-bool parseScoreboard(JsonDocument& doc, const Follow& lf, uint32_t now, Notify notify,
+bool parseScoreboard(JsonDocument& doc, uint8_t ref, uint32_t now, Notify notify,
                      uint8_t& found) {
   bool changed = false;
   for (JsonObjectConst ev : doc["events"].as<JsonArrayConst>()) {
     const char* id = ev["id"] | "";
     for (uint8_t i = 0; i < followCount; i++) {
       Game& g = games[i];
-      if (!g.valid || strcmp(g.id, id) != 0 || !sameLeague(follows[i], lf)) continue;
+      if (!g.valid || strcmp(g.id, id) != 0 || !samePoll(i, ref)) continue;
       found |= 1 << i;
       int16_t hs = -1, as = -1;
       for (JsonObjectConst c : ev["competitions"][0]["competitors"].as<JsonArrayConst>()) {
@@ -268,6 +284,9 @@ bool parseSchedule(JsonDocument& doc, uint8_t i, uint32_t now) {
     g.finalDone = g.state == POST;
   }
   g.start = bestStart;
+  // A team followed in "all" competitions: the game's own league is the one to poll.
+  const char* lg = best["league"]["slug"] | "";
+  strlcpy(g.league, *lg ? lg : follows[i].league, sizeof(g.league));
   for (JsonObjectConst c : best["competitions"][0]["competitors"].as<JsonArrayConst>()) {
     bool home = strcmp(c["homeAway"] | "", "home") == 0;
     JsonObjectConst t = c["team"];
@@ -303,7 +322,7 @@ static void followToJson(const Follow& f, JsonObject o) {
   o["sport"] = f.sport;
   o["league"] = f.league;
   if (f.team[0]) o["team"] = f.team;
-  if (f.event[0]) {
+  if (f.event[0]) {  // a single game, or a Sofascore team's next game
     o["event"] = f.event;
     o["start"] = f.start;
     o["home"] = f.home;
@@ -324,7 +343,10 @@ static bool followFromJson(JsonObjectConst o, Follow& f, const char*& error) {
     error = "invalid sport or league";
     return false;
   }
-  if (*team ? !validId(team, sizeof(f.team)) || *event : !validId(event, sizeof(f.event))) {
+  // ESPN: a team or a game. Sofascore: a team with its next game, or a game.
+  bool app = strcmp(league, "sofascore") == 0;
+  if ((*team && !validId(team, sizeof(f.team))) || (*event && !validId(event, sizeof(f.event))) ||
+      (!*team && !*event) || (*team && *event && !app)) {
     error = "give either a team id or a game id";
     return false;
   }
@@ -340,6 +362,11 @@ static bool followFromJson(JsonObjectConst o, Follow& f, const char*& error) {
     strlcpy(f.homeAbbr, o["homeAbbr"] | "", sizeof(f.homeAbbr));
     strlcpy(f.awayAbbr, o["awayAbbr"] | "", sizeof(f.awayAbbr));
     if (!f.start || !f.home[0] || !f.away[0]) {
+      if (f.team[0]) {  // a Sofascore team without a usable next game: just the team
+        f.event[0] = '\0';
+        f.start = 0;
+        return true;
+      }
       error = "a game needs start, home and away";
       return false;
     }
@@ -409,6 +436,31 @@ bool command(JsonObjectConst cmd, uint32_t now, const char*& error) {
     save();
     return true;
   }
+  if (strcmp(action, "next") == 0) {  // a Sofascore team's next game, from the app
+    const char* team = cmd["team"] | "";
+    for (uint8_t i = 0; i < followCount; i++) {
+      Follow& f = follows[i];
+      if (!appFed(f) || strcmp(f.team, team) != 0) continue;
+      JsonDocument tmp;
+      JsonObject o = tmp.to<JsonObject>();
+      for (JsonPairConst kv : cmd) o[kv.key()] = kv.value();
+      o["sport"] = f.sport;
+      o["league"] = f.league;
+      o["label"] = f.label;
+      Follow n;
+      if (!followFromJson(o, n, error)) return false;
+      bool same = strcmp(n.event, f.event) == 0 && n.start == f.start &&
+                  strcmp(n.home, f.home) == 0 && strcmp(n.away, f.away) == 0;
+      if (same) return true;
+      f = n;
+      if (f.event[0]) gameFromFollow(i, now);
+      else games[i] = Game();
+      save();
+      return true;
+    }
+    error = "team not followed";
+    return false;
+  }
   if (strcmp(action, "remove") == 0) {
     int idx = cmd["index"] | -1;
     if (idx < 0 || idx >= followCount) { error = "index not found"; return false; }
@@ -440,6 +492,7 @@ void toJson(JsonObject o) {
     JsonObject j = ga.add<JsonObject>();
     if (!g.valid) continue;  // {} = no game known yet
     j["id"] = g.id;
+    j["league"] = g.league;
     j["start"] = g.start;
     j["home"] = g.home;
     j["away"] = g.away;
@@ -489,7 +542,11 @@ static void appendGame(char* out, size_t len, const Game& g, uint32_t now) {
     else
       snprintf(when, sizeof(when), "%02d/%02d %02d:%02d", ts.tm_mday, ts.tm_mon + 1, ts.tm_hour,
                ts.tm_min);
-    snprintf(part, sizeof(part), "%s x %s %s", g.home, g.away, when);
+    if (g.state == PRE && g.startDone && now >= g.start) {  // app-fed: no live score
+      snprintf(part, sizeof(part), "%s x %s (em andamento)", g.home, g.away);
+    } else {
+      snprintf(part, sizeof(part), "%s x %s %s", g.home, g.away, when);
+    }
   }
   if (out[0]) strlcat(out, "   ", len);
   strlcat(out, part, len);
@@ -521,7 +578,8 @@ static const char* HOST = "https://site.web.api.espn.com";
 
 static bool needsLivePoll(uint8_t i, uint32_t now) {
   const Game& g = games[i];
-  return g.valid && g.state != POST && now + LIVE_BEFORE_S >= g.start && now < g.start + LIVE_MAX_S;
+  return g.valid && !appFed(follows[i]) && g.state != POST && now + LIVE_BEFORE_S >= g.start &&
+         now < g.start + LIVE_MAX_S;
 }
 
 // ESPN refuses unknown clients, so this identifies as a browser.
@@ -558,6 +616,7 @@ static bool fetchSchedule(uint8_t i, uint32_t now) {
   JsonObject ev = filter["events"][0].to<JsonObject>();
   ev["id"] = true;
   ev["date"] = true;
+  ev["league"]["slug"] = true;
   JsonObject comp = ev["competitions"][0].to<JsonObject>();
   comp["status"]["type"]["state"] = true;
   comp["status"]["type"]["completed"] = true;
@@ -576,11 +635,13 @@ static bool fetchSchedule(uint8_t i, uint32_t now) {
   return true;
 }
 
-static bool fetchHeader(const Follow& lf, uint32_t now, Notify notify, uint8_t& found,
-                        bool& changed) {
+// Scoreboard header of the league of game 'ref' (covers every followed game in it).
+static bool fetchHeader(uint8_t ref, uint32_t now, Notify notify, uint8_t& found, bool& changed) {
+  const char* sport = follows[ref].sport;
+  const char* league = games[ref].league;
   char url[200];
   snprintf(url, sizeof(url), "%s/apis/v2/scoreboard/header?sport=%s&league=%s&lang=pt&region=br",
-           HOST, lf.sport, lf.league);
+           HOST, sport, league);
   JsonDocument filter;
   JsonObject ev = filter["sports"][0]["leagues"][0]["events"][0].to<JsonObject>();
   ev["id"] = true;
@@ -594,20 +655,20 @@ static bool fetchHeader(const Follow& lf, uint32_t now, Notify notify, uint8_t& 
   c["score"] = true;
   JsonDocument doc;
   if (!getJson(url, doc, filter)) return false;
-  changed |= parseHeader(doc, lf, now, notify, found);
+  changed |= parseHeader(doc, ref, now, notify, found);
   return true;
 }
 
 // ESPN groups days by US Eastern time (UTC-4/-5): UTC-4 is right except a 1-hour edge.
-static bool fetchScoreboard(const Follow& lf, uint32_t start, uint32_t now, Notify notify,
-                            uint8_t& found, bool& changed) {
-  time_t t = start - 4 * 3600;
+static bool fetchScoreboard(uint8_t ref, uint32_t now, Notify notify, uint8_t& found,
+                            bool& changed) {
+  time_t t = games[ref].start - 4 * 3600;
   tm d;
   gmtime_r(&t, &d);
   char url[220];
   snprintf(url, sizeof(url),
            "%s/apis/site/v2/sports/%s/%s/scoreboard?dates=%04d%02d%02d&lang=pt&region=br", HOST,
-           lf.sport, lf.league, d.tm_year + 1900, d.tm_mon + 1, d.tm_mday);
+           follows[ref].sport, games[ref].league, d.tm_year + 1900, d.tm_mon + 1, d.tm_mday);
   JsonDocument filter;
   JsonObject ev = filter["events"][0].to<JsonObject>();
   ev["id"] = true;
@@ -619,7 +680,7 @@ static bool fetchScoreboard(const Follow& lf, uint32_t start, uint32_t now, Noti
   c["score"] = true;
   JsonDocument doc;
   if (!getJson(url, doc, filter)) return false;
-  changed |= parseScoreboard(doc, lf, now, notify, found);
+  changed |= parseScoreboard(doc, ref, now, notify, found);
   return true;
 }
 #endif
@@ -644,12 +705,33 @@ bool loop(uint32_t now, uint16_t preMinutes, Notify notify) {
     }
   }
 
-  // 2) One-game follows leave the list 3 h after the end (12 h after the start at most).
+  // 2) App-fed games (Sofascore): no score, so the clock goes by the time. "Started" at
+  // the start time; 3 h later the game is over and the team waits for its next game.
+  for (uint8_t i = 0; i < followCount; i++) {
+    Follow& f = follows[i];
+    Game& g = games[i];
+    if (!appFed(f) || !g.valid) continue;
+    if (!g.startDone && now >= g.start) {
+      g.startDone = true;
+      changed = true;
+      if (now < g.start + 1800 && notify) notify(EV_START, f, g, -1);
+    }
+    if (f.team[0] && now > g.start + KEEP_FINAL_S) {
+      f.event[0] = '\0';
+      f.start = 0;
+      g = Game();
+      save();
+      changed = true;
+    }
+  }
+
+  // 3) One-game follows leave the list 3 h after the end (12 h after the start at most;
+  //    3 h after the start for app-fed games, whose end the clock can't see).
   for (int i = followCount - 1; i >= 0; i--) {
     const Game& g = games[i];
-    if (!follows[i].event[0] || !g.valid) continue;
+    if (!follows[i].event[0] || follows[i].team[0] || !g.valid) continue;
     bool over = (g.state == POST && g.endedAt && now > g.endedAt + KEEP_FINAL_S) ||
-                now > g.start + 12 * 3600UL;
+                now > g.start + (appFed(follows[i]) ? KEEP_FINAL_S : 12 * 3600UL);
     if (over) {
       removeAt(i);
       save();
@@ -658,9 +740,9 @@ bool loop(uint32_t now, uint16_t preMinutes, Notify notify) {
   }
 
 #ifndef SPORTS_HOST_TEST
-  // 3) Each team's next game (one request per call).
+  // 4) Each ESPN team's next game (one request per call).
   for (uint8_t i = 0; i < followCount; i++) {
-    if (!follows[i].team[0] || now < nextRefresh[i]) continue;
+    if (!follows[i].team[0] || appFed(follows[i]) || now < nextRefresh[i]) continue;
     if (games[i].valid && games[i].state == LIVE) {  // never while its game is running
       nextRefresh[i] = now + RETRY_S;
       continue;
@@ -670,22 +752,22 @@ bool loop(uint32_t now, uint16_t preMinutes, Notify notify) {
     return true;
   }
 
-  // 4) Games about to start or running: one league per call, all leagues once a minute.
+  // 5) Games about to start or running: one league per call, all leagues once a minute.
   if ((int32_t)(millis() - nextLiveAt) >= 0) {
     for (uint8_t i = 0; i < followCount; i++) {
       if ((livePolled & (1 << i)) || !needsLivePoll(i, now)) continue;
       uint8_t found = 0;
-      bool ok = fetchHeader(follows[i], now, notify, found, changed);
+      bool ok = fetchHeader(i, now, notify, found, changed);
       // Games of this league the header no longer lists: ask that day's scoreboard.
       for (uint8_t k = 0; ok && k < followCount; k++) {
-        if (!(found & (1 << k)) && needsLivePoll(k, now) && sameLeague(follows[k], follows[i]) &&
+        if (!(found & (1 << k)) && needsLivePoll(k, now) && samePoll(k, i) &&
             now >= games[k].start) {
-          fetchScoreboard(follows[k], games[k].start, now, notify, found, changed);
+          fetchScoreboard(k, now, notify, found, changed);
           break;
         }
       }
       for (uint8_t k = 0; k < followCount; k++) {
-        if (sameLeague(follows[k], follows[i])) livePolled |= 1 << k;
+        if (games[k].valid && samePoll(k, i)) livePolled |= 1 << k;
       }
       return changed;
     }

@@ -1,5 +1,5 @@
 // Service worker: keeps the app shell available offline and makes it installable.
-const CACHE = 'esp32c3-clock-v12';
+const CACHE = 'esp32c3-clock-v13';
 const SHELL = [
   './',
   'index.html',
@@ -33,7 +33,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const host = new URL(e.request.url).hostname;
-  if (host === 'api.github.com' || host.endsWith('espn.com')) return;  // always live
+  if (host === 'api.github.com' || host.endsWith('espn.com') || host.endsWith('sofascore.com')) return;  // always live
   e.respondWith(
     fetch(e.request)
       .then((res) => {

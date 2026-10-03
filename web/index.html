@@ -150,14 +150,20 @@
         <p id="sportEmpty" class="muted center">Nenhum jogo seguido ainda.</p>
 
         <div class="card">
-          <h3>Seguir</h3>
-          <label>Modalidade <select id="spSport"></select></label>
-          <label>Competição <select id="spLeague"></select></label>
-          <label>Time <select id="spTeam" disabled></select></label>
-          <button id="spFollowTeam" class="primary" disabled>Seguir todos os jogos do time</button>
-          <p id="spGamesTitle" class="muted" hidden>Ou só um jogo:</p>
-          <div id="spGames" class="list"></div>
-          <p class="muted">Até 8 itens. Dados da ESPN; o relógio consulta sozinho, minuto a minuto durante o jogo.</p>
+          <h3>Seguir um time</h3>
+          <form id="spSearch" class="row">
+            <input id="spQuery" type="search" placeholder="Ferroviário, Brasil, Lakers…" autocomplete="off" enterkeyhint="search">
+            <button type="submit" class="grow-0">Buscar</button>
+          </form>
+          <div id="spResults"></div>
+          <div id="spPicked" class="picked" hidden>
+            <strong id="spPickedName"></strong>
+            <p id="spPickedNote" class="muted"></p>
+            <button id="spFollowTeam" class="primary">Seguir todos os jogos</button>
+            <p class="muted">Ou só um jogo:</p>
+            <div id="spGames"></div>
+          </div>
+          <p class="muted">Até 8 itens. Times com "placar ao vivo" vêm da ESPN: o relógio consulta sozinho, minuto a minuto durante o jogo. Os de "só agenda" vêm do Sofascore: o app manda o próximo jogo ao relógio sempre que você o abre, e o relógio avisa antes e no início, sem placar.</p>
         </div>
 
         <div class="card">

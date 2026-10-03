@@ -123,17 +123,20 @@ Os agendamentos ficam gravados no relógio e funcionam mesmo sem internet.
 
 **Chaves de configuração**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–9: clássico, ding-dong, campainha, Big Ben, cuco, micro-ondas, notificação, moeda, suave, passarinho), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0 mostrador, 1 relógio de ponteiros, 2 ampulheta de 1 minuto), `ringStyle` (aro do mostrador: 0 cobrinha, 1 tracejado girando, 2 ponteiro de segundos, 3 fixo), `fillStyle` (miolo: 0 serpentina de baixo para cima, um LED a cada 1h30, com o atual piscando; 1 pizza; 2 quadrante do dia; 3 vazio), `fillBlink` (0 junto com os dois-pontos, 1 cada vez mais rápido), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutos), `quotesAtNight`, `quotes` (soma de bits: 1 dólar, 2 euro, 4 libra, 8 bitcoin, 16 ethereum), `screens` (soma de bits: 1 data, 2 data por extenso, 4 tempo, 8 chuva, 16 UV, 32 sol, 64 cotações, 128 jogos), `rainAlert`, `rainHour`, `anim` (números que rolam, telas que deslizam, segundos no ícone), `scrollSpeed` (1–5), `autoEvery` (período do carrossel em segundos, 0 = desligado), `autoFor` (segundos por tela do carrossel), `autoScreens` (mesmos bits de `screens`, sem a data por extenso), `intro` (apresentação ao ligar: saudação, endereço do app, tempo, cotações, data), `welcome` (saudação personalizada; vazio = automática, "Bom dia!" + dica do tempo), `morning` / `morningHour` / `morningMin` ("bom dia" diário: a mesma sequência todo dia nesse horário; substitui o aviso de chuva quando os dois caem no mesmo minuto), `sportPre` (minutos antes do jogo, 0 = sem aviso), `sportStart`, `sportScore` (cada gol no futebol e no hóquei; o placar ao fim de cada período nos outros esportes), `sportFinal`, `sportSound` (nunca no modo noite).
 
-**Jogos** (`cmd/sports`), com os códigos e ids da ESPN (o app os procura):
+**Jogos** (`cmd/sports`). O app busca os times pelo nome e manda estes comandos. Times da ESPN usam os códigos e ids da ESPN; no futebol, a liga é `all` (todas as competições, amistosos incluídos). Times que a ESPN não tem vêm do Sofascore (liga `sofascore`): como o Sofascore recusa aparelhos, o app manda o próximo jogo de cada um com `next` sempre que é aberto, e o relógio avisa antes do jogo e no início, sem placar ao vivo.
 
 ```json
-{"action":"add","sport":"soccer","league":"bra.2","team":"6272","label":"Fortaleza · Série B"}
+{"action":"add","sport":"soccer","league":"all","team":"205","label":"Brasil · todos os jogos"}
+{"action":"add","sport":"basketball","league":"nba","team":"13","label":"Lakers · NBA"}
+{"action":"add","sport":"football","league":"sofascore","team":"32672","label":"Ferroviário · só agenda","event":"9000","start":1791168723,"home":"Floresta","away":"Ferroviário"}
+{"action":"next","team":"32672","event":"9001","start":1791600000,"home":"Ferroviário","away":"Fortaleza"}
 {"action":"add","sport":"soccer","league":"bra.1","event":"401841169","label":"São Paulo x Santos","start":1790982000,"home":"São Paulo","away":"Santos","homeAbbr":"SAO","awayAbbr":"SAN"}
 {"action":"remove","index":1}
 {"action":"clear"}
 {"action":"refresh"}
 ```
 
-Seguindo um time, o relógio mostra o próximo jogo dele naquela competição e passa para o seguinte 3 horas depois do apito final. Um jogo avulso sai da lista 3 horas depois do fim.
+Seguindo um time, o relógio mostra o próximo jogo dele e passa para o seguinte 3 horas depois do apito final. Um jogo avulso sai da lista 3 horas depois do fim.
 
 ## Dados da internet
 
@@ -142,7 +145,7 @@ O próprio relógio busca os dados por HTTPS, sem precisar de chave de API:
 - **Meteorologia**, do [Open-Meteo](https://open-meteo.com), para o local configurado, a cada `weatherMin` minutos: temperatura, condição do tempo, chance de chuva (no dia e nas próximas 3 h), UV, nascer e pôr do sol. O local é definido pelo botão de GPS do app.
 - **Cotações**, da [AwesomeAPI](https://docs.awesomeapi.com.br), a cada `quotesMin` minutos. Não são atualizadas no modo noite, a menos que `quotesAtNight` esteja ligado.
 - **Aviso de chuva**: às `rainHour`:00, se a chance de chuva no dia for de 60% ou mais, rola "Leve guarda-chuva!" com um bipe.
-- **Jogos**, da API JSON pública da ESPN (`site.web.api.espn.com`; não é oficial nem documentada, então pode mudar): o próximo jogo de cada time seguido a cada 6 horas, e o placar a cada minuto, de 15 minutos antes do início até o fim. Alertas: N minutos antes, início, cada gol (fanfarra subindo e bola piscando) e placar final. A tela "Jogos" rola os próximos jogos, o placar ao vivo ou o resultado.
+- **Jogos**, da API JSON pública da ESPN (`site.web.api.espn.com`; não é oficial nem documentada, então pode mudar): o próximo jogo de cada time seguido a cada 6 horas, e o placar a cada minuto, de 15 minutos antes do início até o fim. Times que só o Sofascore tem (divisões menores, estaduais, vôlei...) recebem o próximo jogo pelo app do celular, sem placar ao vivo. Alertas: N minutos antes, início, cada gol (fanfarra subindo e bola piscando) e placar final. A tela "Jogos" rola os próximos jogos, o placar ao vivo ou o resultado.
 
 ### Testando pelo Fedora
 
@@ -209,7 +212,7 @@ A senha do relógio fica em `firmware/include/secrets.h`, que não vai para o gi
 - [x] **Etapa 2**: MQTT com TLS: mensagens na hora, agendamentos/alarmes gravados na flash, configurações remotas, status online (LWT)
 - [x] **Etapa 3**: app do celular (PWA no GitHub Pages) com login
 - [x] **Etapa 4**: meteorologia (Open-Meteo) e cotações (AwesomeAPI) buscadas pelo próprio relógio; localização por GPS, intervalos, telas e cotações escolhidos no app; aviso de chuva
-- [x] **Etapa 4.2**: esportes: times ou jogos escolhidos no app (futebol, basquete, futebol americano, beisebol, hóquei); alertas antes do jogo, no início, a cada gol e no fim; tela "Jogos"
+- [x] **Etapa 4.2**: esportes: times buscados pelo nome no app (ESPN com placar ao vivo; Sofascore só com a agenda) ou jogos avulsos; alertas antes do jogo, no início, a cada gol e no fim; tela "Jogos"
 - [ ] **Etapa 4.1**: Ibovespa e inscritos do YouTube (exigem chave de API → lado do servidor)
 - [ ] **Etapa 5**: fase da lua, posição real do Sol e da Lua pelas coordenadas, ícones animados (clima, lua, Jogo da Vida, chuva de pixels), pomodoro, cronômetro, contagem regressiva
 - [ ] **Etapa 6**: OTA via GitHub Releases, aviso do portão, notificações no celular (ntfy)

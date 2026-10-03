@@ -16,25 +16,19 @@ const EMOTES = [':)', ':D', ';)', ':(', ":'(", ':P', ':O', ':*', '<3', 'xD', '^_
   'o_O', 'B)', '\\o/', '(y)', 'zzz', '\\(^o^)/', '(>_<)', '(^_^)/', '<(^_^)>', '(-_-)zzz'];
 const QUOTE_NAMES = { USD: 'Dólar', EUR: 'Euro', GBP: 'Libra', BTC: 'Bitcoin', ETH: 'Ethereum' };
 
-// Sports and competitions offered in the "Jogos" tab (ESPN slugs). Team sports only:
-// the clock follows one team or one game, with a home and an away side.
-const ESPN = 'https://site.web.api.espn.com/apis/site/v2/sports';
-const SPORTS = [
-  { id: 'soccer', name: 'Futebol', leagues: [
-    ['bra.1', 'Brasileirão Série A'], ['bra.2', 'Brasileirão Série B'],
-    ['bra.copa_do_brazil', 'Copa do Brasil'], ['conmebol.libertadores', 'Libertadores'],
-    ['conmebol.sudamericana', 'Sul-Americana'], ['fifa.worldq.conmebol', 'Eliminatórias (América do Sul)'],
-    ['fifa.world', 'Copa do Mundo'], ['fifa.friendly', 'Amistosos de seleções'],
-    ['uefa.champions', 'Liga dos Campeões'], ['uefa.europa', 'Liga Europa'],
-    ['eng.1', 'Premier League (Inglaterra)'], ['esp.1', 'La Liga (Espanha)'],
-    ['ita.1', 'Série A (Itália)'], ['ger.1', 'Bundesliga (Alemanha)'], ['fra.1', 'Ligue 1 (França)'],
-    ['por.1', 'Liga Portugal'], ['arg.1', 'Liga Argentina'], ['usa.1', 'MLS (EUA)'],
-  ] },
-  { id: 'basketball', name: 'Basquete', leagues: [['nba', 'NBA'], ['wnba', 'WNBA']] },
-  { id: 'football', name: 'Futebol americano', leagues: [['nfl', 'NFL']] },
-  { id: 'baseball', name: 'Beisebol', leagues: [['mlb', 'MLB']] },
-  { id: 'hockey', name: 'Hóquei no gelo', leagues: [['nhl', 'NHL']] },
-];
+// "Jogos" tab: teams are searched by name in two sources.
+//  • ESPN: the clock itself fetches the games and the live score (big leagues, national teams).
+//  • Sofascore: everything else (lower divisions, state leagues, other sports). It refuses
+//    devices, so this app sends the next game to the clock whenever it is opened.
+const ESPN_SITE = 'https://site.web.api.espn.com/apis/site/v2/sports';
+const ESPN_SEARCH = 'https://site.web.api.espn.com/apis/common/v3/search';
+const SOFA = 'https://api.sofascore.com/api/v1';
+const ESPN_SPORTS = { soccer: 'Futebol', basketball: 'Basquete', football: 'Futebol americano',
+  baseball: 'Beisebol', hockey: 'Hóquei no gelo' };
+const SOFA_SPORTS = { football: 'Futebol', futsal: 'Futsal', basketball: 'Basquete', volleyball: 'Vôlei',
+  handball: 'Handebol', 'american-football': 'Futebol americano', baseball: 'Beisebol',
+  'ice-hockey': 'Hóquei no gelo', rugby: 'Rúgbi', waterpolo: 'Polo aquático' };
+const SYNC_MS = 20 * 60 * 1000;  // resend a Sofascore team's next game at most this often
 const MAX_FOLLOWS = 8;
 
 // WMO weather codes (Open-Meteo) → Portuguese description.
@@ -232,7 +226,7 @@ function onMessage(topic, buf) {
     case 'data/weather': dev.weather = data && data.valid ? data : null; break;
     case 'data/quotes': dev.quotes = data || {}; break;
     case 'alert': dev.alert = data; break;
-    case 'sports': dev.sports = data; break;
+    case 'sports': dev.sports = data; syncSofaTeams(id); break;
     case 'ack':
       if (id === current) handleAck(data);
       return;
@@ -301,7 +295,6 @@ function openDevice(id) {
 function selectTab(name) {
   for (const b of $$('.tabs button')) b.classList.toggle('active', b.dataset.tab === name);
   for (const p of $$('[data-panel]')) p.hidden = p.dataset.panel !== name;
-  if (name === 'sports' && !$('#spLeague').options.length) fillLeagues();  // first visit
 }
 
 function renderDevice(kind) {
@@ -509,10 +502,14 @@ function fmtWhen(epoch) {
 }
 
 function describeGame(f, g) {
-  if (!g || !g.id) return f.team ? 'Procurando o próximo jogo…' : '—';
+  if (!g || !g.id) {
+    if (f.league === 'sofascore') return 'Sem jogo marcado (o app confere ao ser aberto)';
+    return f.team ? 'Procurando o próximo jogo…' : '—';
+  }
   const sc = `${g.home} ${g.hs ?? 0} x ${g.as ?? 0} ${g.away}`;
   if (g.state === 'in') return sc + (g.detail ? ` · ${g.detail}` : '');
   if (g.state === 'post') return 'Fim: ' + sc;
+  if (f.league === 'sofascore' && Date.now() / 1000 >= g.start) return `${g.home} x ${g.away} · em andamento`;
   return `${g.home} x ${g.away} · ${fmtWhen(g.start)}`;
 }
 
@@ -538,101 +535,128 @@ function renderSports(sp) {
   });
 }
 
-const teamCache = {};  // "sport/league" -> [{id, name, short, abbr}]
+const normName = (n) => n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
-async function espn(path) {
-  const r = await fetch(`${ESPN}/${path}${path.includes('?') ? '&' : '?'}lang=pt&region=br`);
+async function getJson(url) {
+  const r = await fetch(url);
+  if (r.status === 404) return null;  // Sofascore: "no games"
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
 
-function pickedSport() { return SPORTS.find((x) => x.id === $('#spSport').value) || SPORTS[0]; }
-function pickedLeague() {
-  const sp = pickedSport();
-  const l = sp.leagues.find(([id]) => id === $('#spLeague').value) || sp.leagues[0];
-  return { id: l[0], name: l[1] };
+async function espnSearch(q) {
+  const data = await getJson(`${ESPN_SEARCH}?query=${encodeURIComponent(q)}&type=team&limit=15&lang=pt&region=br`);
+  return ((data && data.items) || [])
+    .filter((t) => t.type === 'team' && ESPN_SPORTS[t.sport])
+    .map((t) => ({
+      src: 'espn', id: String(t.id), name: t.displayName, sport: t.sport,
+      league: t.league || t.defaultLeagueSlug || '',
+    }));
 }
 
-function fillLeagues() {
-  const sel = $('#spLeague');
-  sel.replaceChildren(...pickedSport().leagues.map(([id, name]) => el('option', { value: id }, name)));
-  loadTeams();
+function countryName(c) {
+  if (!c) return '';
+  try { if (c.alpha2) return new Intl.DisplayNames(['pt-BR'], { type: 'region' }).of(c.alpha2); } catch (_) { /* old browser */ }
+  return c.name || '';
 }
 
-async function loadTeams() {
-  const sport = pickedSport().id;
-  const league = pickedLeague().id;
-  const key = `${sport}/${league}`;
-  const sel = $('#spTeam');
-  sel.disabled = true;
-  $('#spFollowTeam').disabled = true;
-  $('#spGames').replaceChildren();
-  $('#spGamesTitle').hidden = true;
-  sel.replaceChildren(el('option', { value: '' }, 'Carregando times…'));
-  try {
-    if (!teamCache[key]) {
-      const data = await espn(`${sport}/${league}/teams?limit=500`);
-      const teams = ((data.sports || [])[0]?.leagues?.[0]?.teams || []).map(({ team: t }) => ({
-        id: t.id, name: t.displayName, short: t.shortDisplayName || t.displayName, abbr: t.abbreviation,
-      }));
-      teams.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-      teamCache[key] = teams;
-    }
-    if (`${pickedSport().id}/${pickedLeague().id}` !== key) return;  // the user moved on
-    const teams = teamCache[key];
-    if (!teams.length) {
-      sel.replaceChildren(el('option', { value: '' }, 'Nenhum time nesta competição agora'));
-      return;
-    }
-    sel.replaceChildren(el('option', { value: '' }, 'Escolha o time…'),
-      ...teams.map((t) => el('option', { value: t.id }, t.name)));
-    sel.disabled = false;
-  } catch (e) {
-    sel.replaceChildren(el('option', { value: '' }, 'Não foi possível carregar os times'));
+async function sofaSearch(q) {
+  const data = await getJson(`${SOFA}/search/all?q=${encodeURIComponent(q)}`);
+  return ((data && data.results) || [])
+    .filter((r) => r.type === 'team' && r.entity && r.entity.sport && SOFA_SPORTS[r.entity.sport.slug])
+    .map(({ entity: e }) => ({
+      src: 'sofa', id: String(e.id), name: e.name, sport: e.sport.slug,
+      country: countryName(e.country), women: e.gender === 'F',
+    }));
+}
+
+function teamNote(t) {
+  if (t.src === 'espn') {
+    const where = t.sport === 'soccer' ? 'todas as competições' : t.league.toUpperCase();
+    return `${ESPN_SPORTS[t.sport]} · ${where} · placar ao vivo`;
+  }
+  const bits = [SOFA_SPORTS[t.sport] + (t.women ? ' feminino' : ''), t.country].filter(Boolean);
+  return `${bits.join(' · ')} · só agenda (sem placar ao vivo)`;
+}
+
+let picked = null;  // team chosen in the search results
+
+async function searchTeams(e) {
+  e.preventDefault();
+  const q = $('#spQuery').value.trim();
+  if (q.length < 2) { toast('Digite ao menos 2 letras.', true); return; }
+  const box = $('#spResults');
+  $('#spPicked').hidden = true;
+  box.replaceChildren(el('p', { class: 'muted' }, 'Buscando…'));
+  const [espn, sofa] = await Promise.allSettled([espnSearch(q), sofaSearch(q)]);
+  const a = espn.status === 'fulfilled' ? espn.value : [];
+  const seen = new Set(a.map((t) => normName(t.name)));
+  // A team ESPN has (with live score) is not repeated from Sofascore.
+  const b = (sofa.status === 'fulfilled' ? sofa.value : []).filter((t) => !seen.has(normName(t.name)));
+  box.replaceChildren();
+  for (const t of [...a, ...b]) {
+    box.append(el('div', { class: 'pick' },
+      el('span', { class: 'grow' }, el('div', {}, t.name), el('div', { class: 'sub' }, teamNote(t))),
+      el('button', { class: 'small', onclick: () => pickTeam(t) }, 'Escolher')));
+  }
+  if (!a.length && !b.length) box.append(el('p', { class: 'muted' }, 'Nenhum time encontrado.'));
+  if (sofa.status === 'rejected') {
+    box.append(el('p', { class: 'muted' }, 'O Sofascore não respondeu agora: times de divisões menores podem faltar. Tente de novo mais tarde.'));
   }
 }
 
-function pickedTeam() {
-  const key = `${pickedSport().id}/${pickedLeague().id}`;
-  return (teamCache[key] || []).find((t) => t.id === $('#spTeam').value) || null;
+// Upcoming games of a team, soonest first.
+async function teamGames(t) {
+  const now = Date.now() / 1000;
+  if (t.src === 'sofa') {
+    const data = await getJson(`${SOFA}/team/${t.id}/events/next/0`);
+    return ((data && data.events) || []).map((e) => ({
+      id: String(e.id), start: e.startTimestamp,
+      home: e.homeTeam.shortName || e.homeTeam.name, away: e.awayTeam.shortName || e.awayTeam.name,
+      homeAbbr: e.homeTeam.nameCode || '', awayAbbr: e.awayTeam.nameCode || '',
+      comp: (e.tournament && e.tournament.name) || '', league: 'sofascore',
+    })).filter((g) => g.start > now - 3 * 3600).sort((x, y) => x.start - y.start).slice(0, 10);
+  }
+  const path = t.sport === 'soccer'
+    ? `soccer/all/teams/${t.id}/schedule?fixture=true`      // every competition, friendlies too
+    : `${t.sport}/${t.league}/teams/${t.id}/schedule?x=1`;
+  const data = await getJson(`${ESPN_SITE}/${path}&lang=pt&region=br`);
+  return ((data && data.events) || []).map((ev) => {
+    const c = (ev.competitions || [])[0] || {};
+    const side = (ha) => ((c.competitors || []).find((x) => x.homeAway === ha) || {}).team || {};
+    const h = side('home'), w = side('away');
+    return {
+      id: ev.id, start: Math.round(Date.parse(ev.date) / 1000),
+      done: !!(c.status && c.status.type && c.status.type.completed),
+      home: h.shortDisplayName || h.displayName || '?', away: w.shortDisplayName || w.displayName || '?',
+      homeAbbr: h.abbreviation || '', awayAbbr: w.abbreviation || '',
+      comp: (ev.league && ev.league.name) || '', league: (ev.league && ev.league.slug) || t.league,
+    };
+  }).filter((g) => !g.done && g.start > now - 3 * 3600).sort((x, y) => x.start - y.start).slice(0, 10);
 }
 
-async function loadGames() {
-  const team = pickedTeam();
+async function pickTeam(t) {
+  picked = t;
+  $('#spPicked').hidden = false;
+  $('#spPickedName').textContent = t.name;
+  $('#spPickedNote').textContent = teamNote(t);
   const box = $('#spGames');
-  box.replaceChildren();
-  $('#spGamesTitle').hidden = true;
-  $('#spFollowTeam').disabled = !team;
-  if (!team) return;
-  const sport = pickedSport().id;
-  const league = pickedLeague();
-  box.append(el('p', { class: 'muted' }, 'Carregando jogos…'));
+  box.replaceChildren(el('p', { class: 'muted' }, 'Carregando jogos…'));
+  $('#spPicked').scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
-    const fixture = sport === 'soccer' ? '?fixture=true' : '';
-    const data = await espn(`${sport}/${league.id}/teams/${team.id}/schedule${fixture}`);
-    if (pickedTeam() !== team) return;
-    const now = Date.now() / 1000;
-    const games = (data.events || []).map((ev) => {
-      const c = (ev.competitions || [])[0] || {};
-      const side = (ha) => ((c.competitors || []).find((x) => x.homeAway === ha) || {}).team || {};
-      const h = side('home'), a = side('away');
-      return {
-        id: ev.id, start: Math.round(Date.parse(ev.date) / 1000),
-        done: !!(c.status && c.status.type && c.status.type.completed),
-        home: h.shortDisplayName || h.displayName || '?', away: a.shortDisplayName || a.displayName || '?',
-        homeAbbr: h.abbreviation || '', awayAbbr: a.abbreviation || '',
-      };
-    }).filter((g) => !g.done && g.start > now - 3 * 3600).sort((a, b) => a.start - b.start).slice(0, 10);
+    const games = await teamGames(t);
+    if (picked !== t) return;
+    t.games = games;
     box.replaceChildren();
     if (!games.length) {
-      box.append(el('p', { class: 'muted' }, 'Nenhum jogo marcado nesta competição. Seguindo o time, o relógio mostra o próximo assim que for marcado.'));
+      box.append(el('p', { class: 'muted' }, 'Nenhum jogo marcado agora. Seguindo o time, o relógio mostra o próximo assim que for marcado.'));
       return;
     }
-    $('#spGamesTitle').hidden = false;
     for (const g of games) {
       box.append(el('div', { class: 'pick' },
-        el('span', { class: 'grow' }, el('div', {}, `${g.home} x ${g.away}`), el('div', { class: 'sub' }, fmtWhen(g.start))),
-        el('button', { class: 'small', onclick: () => followGame(g) }, 'Seguir')));
+        el('span', { class: 'grow' }, el('div', {}, `${g.home} x ${g.away}`),
+          el('div', { class: 'sub' }, [fmtWhen(g.start), g.comp].filter(Boolean).join(' · '))),
+        el('button', { class: 'small', onclick: () => followGame(t, g) }, 'Seguir')));
     }
   } catch (e) {
     box.replaceChildren(el('p', { class: 'muted' }, 'Não foi possível carregar os jogos.'));
@@ -648,24 +672,50 @@ function listFull() {
   return false;
 }
 
+const gameFields = (g) => g
+  ? { event: g.id, start: g.start, home: g.home, away: g.away, homeAbbr: g.homeAbbr, awayAbbr: g.awayAbbr }
+  : {};
+
 function followTeam() {
-  const team = pickedTeam();
-  if (!team || listFull()) return;
-  const league = pickedLeague();
-  publish('cmd/sports', {
-    action: 'add', sport: pickedSport().id, league: league.id, team: team.id,
-    label: `${team.short} · ${league.name}`,
-  });
+  const t = picked;
+  if (!t || listFull()) return;
+  if (t.src === 'espn') {
+    publish('cmd/sports', {
+      action: 'add', sport: t.sport, league: t.sport === 'soccer' ? 'all' : t.league, team: t.id,
+      label: `${t.name} · ${t.sport === 'soccer' ? 'todos os jogos' : t.league.toUpperCase()}`,
+    });
+  } else {
+    publish('cmd/sports', Object.assign({
+      action: 'add', sport: t.sport, league: 'sofascore', team: t.id, label: `${t.name} · só agenda`,
+    }, gameFields((t.games || [])[0])));
+  }
 }
 
-function followGame(g) {
+function followGame(t, g) {
   if (listFull()) return;
-  const league = pickedLeague();
-  publish('cmd/sports', {
-    action: 'add', sport: pickedSport().id, league: league.id, event: g.id,
-    label: `${g.home} x ${g.away} · ${league.name}`, start: g.start,
-    home: g.home, away: g.away, homeAbbr: g.homeAbbr, awayAbbr: g.awayAbbr,
-  });
+  publish('cmd/sports', Object.assign({
+    action: 'add', sport: t.sport, league: g.league,
+    label: `${g.home} x ${g.away}${g.comp ? ' · ' + g.comp : ''}`,
+  }, gameFields(g)));
+}
+
+// Sofascore teams: the clock can't look their games up, so the app sends the next one.
+const lastSync = {};  // "clock/team" -> ms
+async function syncSofaTeams(id) {
+  const d = devices[id];
+  if (!client || !client.connected || !d || !d.sports) return;
+  for (const f of d.sports.follows || []) {
+    if (f.league !== 'sofascore' || !f.team) continue;
+    const key = `${id}/${f.team}`;
+    if (Date.now() - (lastSync[key] || 0) < SYNC_MS) continue;
+    lastSync[key] = Date.now();
+    try {
+      const g = (await teamGames({ src: 'sofa', id: f.team }))[0];
+      if ((g ? g.id : '') === (f.event || '') && (!g || g.start === f.start)) continue;  // up to date
+      client.publish(`clock/${id}/cmd/sports`,
+        JSON.stringify(Object.assign({ action: 'next', team: f.team }, gameFields(g))), { qos: 1 });
+    } catch (_) { lastSync[key] = 0; /* try again next time */ }
+  }
 }
 
 // ------------------------------------------------------------ firmware update
@@ -827,7 +877,6 @@ function buildStaticControls() {
   for (const e of EMOTES) {
     $('#emotes').append(el('button', { type: 'button', onclick: () => insertEmote(e) }, e));
   }
-  $('#spSport').replaceChildren(...SPORTS.map((x) => el('option', { value: x.id }, x.name)));
   DAY_NAMES.forEach((name, i) => {
     $('#schedDaysWrap').append(el('label', {},
       el('input', Object.assign({ type: 'checkbox', value: i }, i >= 1 && i <= 5 ? { checked: '' } : {})), name));
@@ -867,9 +916,7 @@ function wire() {
     for (const cb of group.querySelectorAll('input[data-bit]')) cb.addEventListener('change', () => onMaskChange(group));
   }
   $('#gpsBtn').addEventListener('click', useGps);
-  $('#spSport').addEventListener('change', fillLeagues);
-  $('#spLeague').addEventListener('change', loadTeams);
-  $('#spTeam').addEventListener('change', loadGames);
+  $('#spSearch').addEventListener('submit', searchTeams);
   $('#spFollowTeam').addEventListener('click', followTeam);
   $('#updateBtn').addEventListener('click', startUpdate);
   $('#checkBtn').addEventListener('click', () => checkUpdate(true));
