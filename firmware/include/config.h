@@ -22,9 +22,9 @@ constexpr uint8_t QUOTES_ALL = 0x1F;
 // Screen selection bits for the touch cycle (the clock itself is always on).
 enum ScreenBit : uint8_t {
   SB_DATE = 1 << 0, SB_LONGDATE = 1 << 1, SB_WEATHER = 1 << 2, SB_RAIN = 1 << 3,
-  SB_UV = 1 << 4, SB_SUN = 1 << 5, SB_QUOTES = 1 << 6,
+  SB_UV = 1 << 4, SB_SUN = 1 << 5, SB_QUOTES = 1 << 6, SB_SPORTS = 1 << 7,
 };
-constexpr uint8_t SCREENS_ALL = 0x7F;
+constexpr uint8_t SCREENS_ALL = 0xFF;
 
 struct Settings {
   char    name[NAME_LEN] = "Clock";  // friendly name shown in the app
@@ -69,6 +69,13 @@ struct Settings {
   bool     morning     = true;
   uint8_t  morningHour = 7;
   uint8_t  morningMin  = 0;
+
+  // Sports alerts (the followed games themselves are in sports.h)
+  uint8_t  sportPre    = 30;              // minutes before the start (0 = no warning)
+  bool     sportStart  = true;            // "the game started"
+  bool     sportScore  = true;            // each goal (soccer, hockey) / end of each period
+  bool     sportFinal  = true;            // final score
+  bool     sportSound  = true;            // beep with the alerts (never in night mode)
 };
 
 extern Settings s;

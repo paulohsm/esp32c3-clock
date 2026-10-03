@@ -48,7 +48,7 @@ To change networks later, **hold the touch pad (or BOOT) while powering on**, or
 
 | Gesture | Action |
 |---|---|
-| Tap | Next screen: time → date → long date → weather → rain → UV → sunrise/sunset → quotes (screens without data or disabled in the app are skipped; they return to the time after 10 s) |
+| Tap | Next screen: time → date → long date → weather → rain → UV → sunrise/sunset → games → quotes (screens without data or disabled in the app are skipped; they return to the time after 10 s) |
 | Double tap | Name, IP, Wi-Fi signal, MQTT status, device id, version |
 | Long press | Toggle hourly chime |
 | Any, during an alarm | Stop the alarm |
@@ -77,13 +77,15 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 | `schedules` | clock → | list of schedules (retained) |
 | `data/weather` | clock → | latest weather (retained): `temp`, `feels`, `humidity`, `code` (WMO), `isDay`, `uv`, `uvMax`, `rainNext`, `rainDay`, `tMax`, `tMin`, `sunrise`, `sunset`, `at` |
 | `data/quotes` | clock → | latest quotes in BRL (retained): `{"USD":{"bid","pct","at"},…}` |
+| `sports` | clock → | followed games (retained): `{"follows":[{"sport","league","team"\|"event","label",…}],"games":[{"id","start","home","away","hs","as","state":"pre"\|"in"\|"post","detail"}]}` (`games[i]` belongs to `follows[i]`; `{}` = no game found yet) |
 | `ack` | clock → reply to each command: `{"cmd","ok","error?","id?"}` |
 | `cmd/msg` | → clock | plain text, or `{"text":"...","beep":true,"repeat":2}` |
 | `cmd/schedule` | → clock | see below |
 | `cmd/alert` | → clock | emergency alert: `{"text":"...","seconds":120}` (10–3600 s); `{"cancel":true}` stops it. Scrolls with a blinking warning icon and a full-volume siren until a touch on the sensor, cancel or timeout |
 | `alert` | clock → | alert state (retained): `{"active":true,"text","started","until"}` or `{"active":false,"text","endedBy":"touch"\|"app"\|"timeout","at"}` |
 | `cmd/ota` | → clock | firmware update: `{"url":"https://github.com/paulohsm/esp32c3-clock/releases/download/vX.Y.Z/firmware.bin"}` — only URLs from this repo's releases are accepted; the clock shows the progress and reboots |
-| `cmd/show` | → clock | show a screen now: `date`, `longdate`, `weather`, `rain`, `uv`, `sun` or `quotes` |
+| `cmd/show` | → clock | show a screen now: `date`, `longdate`, `weather`, `rain`, `uv`, `sun`, `sports` or `quotes` |
+| `cmd/sports` | → clock | games to follow (up to 8), see below |
 | `cmd/beep` | → clock | empty, or `{"timbre":3}` |
 | `config/set` | → clock | any subset of the settings, e.g. `{"brightness":4,"rotated":true}` |
 | `cmd/sync` | → clock | refresh weather/quotes and republish everything |
@@ -100,9 +102,21 @@ Each clock has an id derived from its chip, e.g. `clock-a1b2c3`, printed on the 
 {"action":"list"}
 ```
 
+**Games** (`cmd/sports`), with ESPN slugs and ids (the app looks them up):
+
+```json
+{"action":"add","sport":"soccer","league":"bra.2","team":"6272","label":"Fortaleza · Série B"}
+{"action":"add","sport":"soccer","league":"bra.1","event":"401841169","label":"São Paulo x Santos","start":1790982000,"home":"São Paulo","away":"Santos","homeAbbr":"SAO","awayAbbr":"SAN"}
+{"action":"remove","index":1}
+{"action":"clear"}
+{"action":"refresh"}
+```
+
+A team follow shows the team's next game in that competition and moves on to the following one 3 hours after the final whistle. A one-game follow leaves the list 3 hours after the end.
+
 `days`: 0 = Sunday … 6 = Saturday (weekly repeat). `date`: one-shot. With neither, the next occurrence of `time` fires once. With `"alarm": true`, it rings and scrolls until touched (or for 1 minute).
 
-**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–9: classic, ding-dong, doorbell, Big Ben, cuckoo, microwave, notification, coin, soft, bird), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0 dial, 1 clock face, 2 one-minute hourglass), `ringStyle` (dial ring: 0 snake, 1 turning dashes, 2 seconds gap, 3 still), `fillStyle` (dial inside: 0 zigzag filling bottom-up, one LED per 1.5 h with the current one blinking, 1 pie, 2 quarter of the day, 3 empty), `fillBlink` (0 with the colon, 1 faster as its 1.5 h run out), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes), `rainAlert`, `rainHour`, `anim` (rolling digits, sliding screens, seconds dot on the dial), `scrollSpeed` (1–5), `autoEvery` (carousel period in seconds, 0 = off), `autoFor` (seconds per carousel screen), `autoScreens` (same bits as `screens`, long date excluded), `intro` (power-on introduction: greeting, app address, weather, quotes, date), `welcome` (custom greeting; empty = automatic "Bom dia!" plus a weather tip), `morning` / `morningHour` / `morningMin` (daily "good morning": the same sequence every day at that time; replaces the rain warning if both fall on the same minute).
+**Settings keys**: `name`, `brightness` (0–6), `rotated`, `hourlyBeep`, `timbre` (0–9: classic, ding-dong, doorbell, Big Ben, cuckoo, microwave, notification, coin, soft, bird), `volume` (1–5), `nightEnabled`, `nightStart`, `nightEnd`, `clockIcon` (0 dial, 1 clock face, 2 one-minute hourglass), `ringStyle` (dial ring: 0 snake, 1 turning dashes, 2 seconds gap, 3 still), `fillStyle` (dial inside: 0 zigzag filling bottom-up, one LED per 1.5 h with the current one blinking, 1 pie, 2 quarter of the day, 3 empty), `fillBlink` (0 with the colon, 1 faster as its 1.5 h run out), `lat`, `lon`, `place`, `weatherMin` / `quotesMin` (5–120 minutes), `quotesAtNight`, `quotes` (bitmask: 1 USD, 2 EUR, 4 GBP, 8 BTC, 16 ETH), `screens` (bitmask: 1 date, 2 long date, 4 weather, 8 rain, 16 UV, 32 sun, 64 quotes, 128 games), `rainAlert`, `rainHour`, `anim` (rolling digits, sliding screens, seconds dot on the dial), `scrollSpeed` (1–5), `autoEvery` (carousel period in seconds, 0 = off), `autoFor` (seconds per carousel screen), `autoScreens` (same bits as `screens`, long date excluded), `intro` (power-on introduction: greeting, app address, weather, quotes, date), `welcome` (custom greeting; empty = automatic "Bom dia!" plus a weather tip), `morning` / `morningHour` / `morningMin` (daily "good morning": the same sequence every day at that time; replaces the rain warning if both fall on the same minute), `sportPre` (minutes before a game, 0 = no warning), `sportStart`, `sportScore` (each goal in football/soccer and hockey; the score at the end of each period in other sports), `sportFinal`, `sportSound` (never in night mode).
 
 ## Internet data
 
@@ -111,6 +125,7 @@ The clock fetches its own data over HTTPS, with no API keys:
 - **Weather** from [Open-Meteo](https://open-meteo.com) for the configured location (the app's GPS button sets it), every `weatherMin` minutes: temperature, weather, rain chance (today and next 3 h), UV, sunrise/sunset.
 - **Quotes** from [AwesomeAPI](https://docs.awesomeapi.com.br) every `quotesMin` minutes, skipped during night mode unless `quotesAtNight`.
 - **Rain warning**: at `rainHour`:00, if today's rain chance is 60% or more, it scrolls "Leve guarda-chuva!" with a chime.
+- **Games** from ESPN's public JSON API (`site.web.api.espn.com`, unofficial and undocumented, so it may change): each followed team's next game every 6 h, and the score every minute from 15 minutes before the start until the end. Alerts: N minutes before, kick-off, each goal (a rising fanfare and a flashing ball), and the final score. The "Jogos" screen scrolls the upcoming games, the live score or the result.
 
 ### Testing from Fedora
 
@@ -158,7 +173,7 @@ cd ~/Projetos/esp32c3-clock && python3 tools/gen_icons.py
 
 ## Serial commands
 
-`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `intro`, `ota <url>`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `teste`.
+`help`, `info`, `name`, `bri`, `rot`, `beep`, `timbre`, `vol`, `night`, `icon`, `loc <lat> <lon>`, `fetch`, `anim`, `speed`, `auto <sec> [dur]`, `msg`, `alert <sec> <text>` (`alert 0` stops), `intro`, `ota <url>`, `sports`, `test`, `wifireset`. Portuguese aliases also work: `nome`, `noite`, `icone`, `atualizar`, `animacao`, `velocidade`, `alerta`, `apresentacao`, `jogos`, `teste`.
 
 ## MQTT credentials (HiveMQ)
 
@@ -177,6 +192,7 @@ The clock's password goes in `firmware/include/secrets.h`, which is git-ignored.
 - [x] **Stage 2**: MQTT over TLS: instant messages, schedules/alarms stored in flash, remote settings, online status (LWT)
 - [x] **Stage 3**: phone app (PWA on GitHub Pages) with login
 - [x] **Stage 4**: weather (Open-Meteo) and quotes (AwesomeAPI) fetched by the clock; GPS location, intervals, screens and quotes chosen in the app; rain warning
+- [x] **Stage 4.2**: sports: follow teams or games (football/soccer, basketball, American football, baseball, hockey) chosen in the app; alerts before the game, at kick-off, on each goal and at the end; "games" screen
 - [ ] **Stage 4.1**: Ibovespa and YouTube subscribers (need API keys → server side)
 - [ ] **Stage 5**: moon phase, real Sun/Moon position from coordinates, animated icons (weather, moon, Game of Life, pixel rain), pomodoro, stopwatch, countdown
 - [ ] **Stage 6**: OTA via GitHub Releases, gate status, phone notifications (ntfy)

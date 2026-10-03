@@ -54,6 +54,7 @@
       <nav class="tabs" role="tablist">
         <button data-tab="msg" class="active">Mensagem</button>
         <button data-tab="sched">Agenda</button>
+        <button data-tab="sports">Jogos</button>
         <button data-tab="cfg">Ajustes</button>
         <button data-tab="info">Info</button>
       </nav>
@@ -108,6 +109,7 @@
           <button data-show="uv">UV</button>
           <button data-show="sun">Nascer/pôr do sol</button>
           <button data-show="quotes">Cotações</button>
+          <button data-show="sports">Jogos</button>
         </div>
       </div>
 
@@ -140,6 +142,50 @@
           </label>
           <button class="primary" type="submit">Agendar</button>
         </form>
+      </div>
+
+      <!-- Sports -->
+      <div data-panel="sports" class="panel" hidden>
+        <div id="sportList" class="list"></div>
+        <p id="sportEmpty" class="muted center">Nenhum jogo seguido ainda.</p>
+
+        <div class="card">
+          <h3>Seguir</h3>
+          <label>Modalidade <select id="spSport"></select></label>
+          <label>Competição <select id="spLeague"></select></label>
+          <label>Time <select id="spTeam" disabled></select></label>
+          <button id="spFollowTeam" class="primary" disabled>Seguir todos os jogos do time</button>
+          <p id="spGamesTitle" class="muted" hidden>Ou só um jogo:</p>
+          <div id="spGames" class="list"></div>
+          <p class="muted">Até 8 itens. Dados da ESPN; o relógio consulta sozinho, minuto a minuto durante o jogo.</p>
+        </div>
+
+        <div class="card">
+          <h3>Alertas</h3>
+          <label>Aviso antes do jogo
+            <select data-key="sportPre">
+              <option value="0">Desligado</option>
+              <option value="5">5 min antes</option>
+              <option value="10">10 min antes</option>
+              <option value="15">15 min antes</option>
+              <option value="30">30 min antes</option>
+              <option value="60">1 h antes</option>
+              <option value="120">2 h antes</option>
+            </select>
+          </label>
+          <label class="switch"><input data-key="sportStart" type="checkbox"> Início do jogo</label>
+          <label class="switch"><input data-key="sportScore" type="checkbox"> Placar ao vivo: cada gol (futebol, hóquei) ou fim de cada período (outros esportes)</label>
+          <label class="switch"><input data-key="sportFinal" type="checkbox"> Placar final</label>
+          <label class="switch"><input data-key="sportSound" type="checkbox"> Som nos alertas (nunca no modo noite)</label>
+          <h3>Tela "Jogos"</h3>
+          <p class="muted">Próximos jogos, placar ao vivo e resultado, rolando na tela.</p>
+          <div class="checks" data-mask="screens">
+            <label class="check"><input type="checkbox" data-bit="7"> No toque</label>
+          </div>
+          <div class="checks" data-mask="autoScreens">
+            <label class="check"><input type="checkbox" data-bit="7"> No carrossel automático</label>
+          </div>
+        </div>
       </div>
 
       <!-- Settings -->
@@ -225,6 +271,7 @@
             <label class="check"><input type="checkbox" data-bit="4"> Índice UV</label>
             <label class="check"><input type="checkbox" data-bit="5"> Nascer e pôr do sol</label>
             <label class="check"><input type="checkbox" data-bit="6"> Cotações</label>
+            <label class="check"><input type="checkbox" data-bit="7"> Jogos</label>
           </div>
         </div>
         <div class="card">
@@ -257,6 +304,7 @@
             <label class="check"><input type="checkbox" data-bit="4"> Índice UV</label>
             <label class="check"><input type="checkbox" data-bit="5"> Nascer e pôr do sol</label>
             <label class="check"><input type="checkbox" data-bit="6"> Cotações</label>
+            <label class="check"><input type="checkbox" data-bit="7"> Jogos</label>
           </div>
         </div>
         <div class="card">

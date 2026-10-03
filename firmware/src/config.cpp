@@ -40,6 +40,7 @@ void clamp() {
   s.welcome[WELCOME_LEN - 1] = '\0';
   if (s.morningHour > 23) s.morningHour = 7;
   if (s.morningMin > 59) s.morningMin = 0;
+  if (s.sportPre > 120) s.sportPre = 120;
   s.name[NAME_LEN - 1] = '\0';
   if (s.name[0] == '\0') strlcpy(s.name, "Clock", NAME_LEN);
 }
@@ -79,6 +80,13 @@ void load() {
   s.morning      = prefs.getBool("morning", true);
   s.morningHour  = prefs.getUChar("mornh", 7);
   s.morningMin   = prefs.getUChar("mornm", 0);
+  // First boot with sports support: add the new "games" screen to the touch cycle.
+  if (!prefs.isKey("spre")) s.screens |= SB_SPORTS;
+  s.sportPre     = prefs.getUChar("spre", 30);
+  s.sportStart   = prefs.getBool("sstart", true);
+  s.sportScore   = prefs.getBool("sscore", true);
+  s.sportFinal   = prefs.getBool("sfinal", true);
+  s.sportSound   = prefs.getBool("ssound", true);
   prefs.end();
   clamp();
 }
@@ -118,6 +126,11 @@ void save() {
   prefs.putBool("morning", s.morning);
   prefs.putUChar("mornh", s.morningHour);
   prefs.putUChar("mornm", s.morningMin);
+  prefs.putUChar("spre", s.sportPre);
+  prefs.putBool("sstart", s.sportStart);
+  prefs.putBool("sscore", s.sportScore);
+  prefs.putBool("sfinal", s.sportFinal);
+  prefs.putBool("ssound", s.sportSound);
   prefs.end();
 }
 
@@ -156,6 +169,11 @@ void toJson(JsonObject o) {
   o["morning"]      = s.morning;
   o["morningHour"]  = s.morningHour;
   o["morningMin"]   = s.morningMin;
+  o["sportPre"]     = s.sportPre;
+  o["sportStart"]   = s.sportStart;
+  o["sportScore"]   = s.sportScore;
+  o["sportFinal"]   = s.sportFinal;
+  o["sportSound"]   = s.sportSound;
 }
 
 template <typename T>
@@ -220,6 +238,11 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "morning", s.morning);
   changed |= setIf(o, "morningHour", s.morningHour);
   changed |= setIf(o, "morningMin", s.morningMin);
+  changed |= setIf(o, "sportPre", s.sportPre);
+  changed |= setIf(o, "sportStart", s.sportStart);
+  changed |= setIf(o, "sportScore", s.sportScore);
+  changed |= setIf(o, "sportFinal", s.sportFinal);
+  changed |= setIf(o, "sportSound", s.sportSound);
   clamp();
   return changed;
 }

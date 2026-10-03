@@ -16,6 +16,27 @@ const EMOTES = [':)', ':D', ';)', ':(', ":'(", ':P', ':O', ':*', '<3', 'xD', '^_
   'o_O', 'B)', '\\o/', '(y)', 'zzz', '\\(^o^)/', '(>_<)', '(^_^)/', '<(^_^)>', '(-_-)zzz'];
 const QUOTE_NAMES = { USD: 'Dólar', EUR: 'Euro', GBP: 'Libra', BTC: 'Bitcoin', ETH: 'Ethereum' };
 
+// Sports and competitions offered in the "Jogos" tab (ESPN slugs). Team sports only:
+// the clock follows one team or one game, with a home and an away side.
+const ESPN = 'https://site.web.api.espn.com/apis/site/v2/sports';
+const SPORTS = [
+  { id: 'soccer', name: 'Futebol', leagues: [
+    ['bra.1', 'Brasileirão Série A'], ['bra.2', 'Brasileirão Série B'],
+    ['bra.copa_do_brazil', 'Copa do Brasil'], ['conmebol.libertadores', 'Libertadores'],
+    ['conmebol.sudamericana', 'Sul-Americana'], ['fifa.worldq.conmebol', 'Eliminatórias (América do Sul)'],
+    ['fifa.world', 'Copa do Mundo'], ['fifa.friendly', 'Amistosos de seleções'],
+    ['uefa.champions', 'Liga dos Campeões'], ['uefa.europa', 'Liga Europa'],
+    ['eng.1', 'Premier League (Inglaterra)'], ['esp.1', 'La Liga (Espanha)'],
+    ['ita.1', 'Série A (Itália)'], ['ger.1', 'Bundesliga (Alemanha)'], ['fra.1', 'Ligue 1 (França)'],
+    ['por.1', 'Liga Portugal'], ['arg.1', 'Liga Argentina'], ['usa.1', 'MLS (EUA)'],
+  ] },
+  { id: 'basketball', name: 'Basquete', leagues: [['nba', 'NBA'], ['wnba', 'WNBA']] },
+  { id: 'football', name: 'Futebol americano', leagues: [['nfl', 'NFL']] },
+  { id: 'baseball', name: 'Beisebol', leagues: [['mlb', 'MLB']] },
+  { id: 'hockey', name: 'Hóquei no gelo', leagues: [['nhl', 'NHL']] },
+];
+const MAX_FOLLOWS = 8;
+
 // WMO weather codes (Open-Meteo) → Portuguese description.
 function weatherText(code) {
   if (code === 0) return 'Céu limpo';
@@ -135,6 +156,7 @@ function connect(user, pass) {
     client.subscribe('clock/+/ack', { qos: 1 });
     client.subscribe('clock/+/data/+', { qos: 1 });
     client.subscribe('clock/+/alert', { qos: 1 });
+    client.subscribe('clock/+/sports', { qos: 1 });
     if ($('#loginView').hidden === false) {
       if ($('#remember').checked) store(STORE_KEY, { user, pass });
       const last = load(LAST_KEY);
@@ -194,6 +216,7 @@ function onMessage(topic, buf) {
   const text = buf.toString();
   const dev = devices[id] || (devices[id] = {
     online: false, info: {}, config: null, schedules: [], weather: null, quotes: {}, alert: null,
+    sports: null,
   });
 
   let data = null;
@@ -209,6 +232,7 @@ function onMessage(topic, buf) {
     case 'data/weather': dev.weather = data && data.valid ? data : null; break;
     case 'data/quotes': dev.quotes = data || {}; break;
     case 'alert': dev.alert = data; break;
+    case 'sports': dev.sports = data; break;
     case 'ack':
       if (id === current) handleAck(data);
       return;
@@ -229,12 +253,18 @@ const ACK_OK = {
   reboot: 'Reiniciando…',
   show: 'Mostrando no relógio.',
   alert: 'Alerta atualizado.',
+  sports: 'Lista de jogos atualizada.',
+};
+const ERRORS = {
+  'already followed': 'Já está na lista.',
+  'list full (8)': 'Lista cheia: no máximo 8 itens.',
+  'index not found': 'Item não encontrado; atualize a lista.',
 };
 function handleAck(a) {
   if (!a) return;
   if (a.cmd === 'ota' && !a.ok) { updateState = ''; installingFrom = null; renderUpdate(); }
   if (a.ok) toast(ACK_OK[a.cmd] || 'OK');
-  else toast('Erro: ' + (a.error || a.cmd), true);
+  else toast('Erro: ' + (ERRORS[a.error] || a.error || a.cmd), true);
 }
 
 // ------------------------------------------------------------ list view
@@ -271,6 +301,7 @@ function openDevice(id) {
 function selectTab(name) {
   for (const b of $$('.tabs button')) b.classList.toggle('active', b.dataset.tab === name);
   for (const p of $$('[data-panel]')) p.hidden = p.dataset.panel !== name;
+  if (name === 'sports' && !$('#spLeague').options.length) fillLeagues();  // first visit
 }
 
 function renderDevice(kind) {
@@ -283,6 +314,7 @@ function renderDevice(kind) {
   if (!kind || kind === 'info' || kind === 'online') { renderInfo(d); renderUpdate(); }
   if (!kind || kind.startsWith('data/')) renderNow(d);
   if (!kind || kind === 'alert') renderAlert(d.alert);
+  if (!kind || kind === 'sports') renderSports(d.sports);
 }
 
 function renderConfig(c) {
@@ -371,12 +403,18 @@ function sendAlert() {
   publish('cmd/alert', { text, seconds: secs });
 }
 
+// A group may hold only some bits of a mask (e.g. the "Jogos" screen in its own tab):
+// the other bits keep the clock's current value.
 function onMaskChange(group) {
-  let mask = 0;
+  const key = group.dataset.mask;
+  const c = devices[current] && devices[current].config;
+  let mask = (c && c[key]) || 0;
   for (const cb of group.querySelectorAll('input[data-bit]')) {
-    if (cb.checked) mask |= 1 << Number(cb.dataset.bit);
+    const bit = 1 << Number(cb.dataset.bit);
+    mask = cb.checked ? mask | bit : mask & ~bit;
   }
-  publish('config/set', { [group.dataset.mask]: mask });
+  if (c) c[key] = mask;  // so a quick second change builds on this one
+  publish('config/set', { [key]: mask });
 }
 
 async function useGps() {
@@ -454,6 +492,180 @@ function renderInfo(d) {
   const dl = $('#infoList');
   dl.replaceChildren();
   for (const [k, v] of rows) dl.append(el('dt', {}, k), el('dd', {}, String(v)));
+}
+
+// ------------------------------------------------------------ sports
+
+function fmtWhen(epoch) {
+  const t = new Date(epoch * 1000);
+  const today = new Date();
+  const days = Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate())
+    - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+  const hm = t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (days === 0) return `hoje, ${hm}`;
+  if (days === 1) return `amanhã, ${hm}`;
+  const wd = t.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+  return `${wd} ${t.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${hm}`;
+}
+
+function describeGame(f, g) {
+  if (!g || !g.id) return f.team ? 'Procurando o próximo jogo…' : '—';
+  const sc = `${g.home} ${g.hs ?? 0} x ${g.as ?? 0} ${g.away}`;
+  if (g.state === 'in') return sc + (g.detail ? ` · ${g.detail}` : '');
+  if (g.state === 'post') return 'Fim: ' + sc;
+  return `${g.home} x ${g.away} · ${fmtWhen(g.start)}`;
+}
+
+function renderSports(sp) {
+  const box = $('#sportList');
+  box.replaceChildren();
+  const follows = (sp && sp.follows) || [];
+  const games = (sp && sp.games) || [];
+  $('#sportEmpty').hidden = follows.length > 0;
+  follows.forEach((f, i) => {
+    const g = games[i] || {};
+    const title = el('div', { class: 'text' }, f.label || f.team || f.event);
+    title.append(el('span', { class: 'tag' }, f.team ? 'time' : 'jogo'));
+    if (g.state === 'in') title.append(el('span', { class: 'tag live' }, 'ao vivo'));
+    box.append(el('div', { class: 'sched game' },
+      el('span', { class: 'grow' }, title, el('div', { class: 'sub score' }, describeGame(f, g))),
+      el('button', {
+        class: 'danger',
+        onclick: () => {
+          if (confirm(`Deixar de seguir "${f.label}"?`)) publish('cmd/sports', { action: 'remove', index: i });
+        },
+      }, 'Remover')));
+  });
+}
+
+const teamCache = {};  // "sport/league" -> [{id, name, short, abbr}]
+
+async function espn(path) {
+  const r = await fetch(`${ESPN}/${path}${path.includes('?') ? '&' : '?'}lang=pt&region=br`);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+function pickedSport() { return SPORTS.find((x) => x.id === $('#spSport').value) || SPORTS[0]; }
+function pickedLeague() {
+  const sp = pickedSport();
+  const l = sp.leagues.find(([id]) => id === $('#spLeague').value) || sp.leagues[0];
+  return { id: l[0], name: l[1] };
+}
+
+function fillLeagues() {
+  const sel = $('#spLeague');
+  sel.replaceChildren(...pickedSport().leagues.map(([id, name]) => el('option', { value: id }, name)));
+  loadTeams();
+}
+
+async function loadTeams() {
+  const sport = pickedSport().id;
+  const league = pickedLeague().id;
+  const key = `${sport}/${league}`;
+  const sel = $('#spTeam');
+  sel.disabled = true;
+  $('#spFollowTeam').disabled = true;
+  $('#spGames').replaceChildren();
+  $('#spGamesTitle').hidden = true;
+  sel.replaceChildren(el('option', { value: '' }, 'Carregando times…'));
+  try {
+    if (!teamCache[key]) {
+      const data = await espn(`${sport}/${league}/teams?limit=500`);
+      const teams = ((data.sports || [])[0]?.leagues?.[0]?.teams || []).map(({ team: t }) => ({
+        id: t.id, name: t.displayName, short: t.shortDisplayName || t.displayName, abbr: t.abbreviation,
+      }));
+      teams.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      teamCache[key] = teams;
+    }
+    if (`${pickedSport().id}/${pickedLeague().id}` !== key) return;  // the user moved on
+    const teams = teamCache[key];
+    if (!teams.length) {
+      sel.replaceChildren(el('option', { value: '' }, 'Nenhum time nesta competição agora'));
+      return;
+    }
+    sel.replaceChildren(el('option', { value: '' }, 'Escolha o time…'),
+      ...teams.map((t) => el('option', { value: t.id }, t.name)));
+    sel.disabled = false;
+  } catch (e) {
+    sel.replaceChildren(el('option', { value: '' }, 'Não foi possível carregar os times'));
+  }
+}
+
+function pickedTeam() {
+  const key = `${pickedSport().id}/${pickedLeague().id}`;
+  return (teamCache[key] || []).find((t) => t.id === $('#spTeam').value) || null;
+}
+
+async function loadGames() {
+  const team = pickedTeam();
+  const box = $('#spGames');
+  box.replaceChildren();
+  $('#spGamesTitle').hidden = true;
+  $('#spFollowTeam').disabled = !team;
+  if (!team) return;
+  const sport = pickedSport().id;
+  const league = pickedLeague();
+  box.append(el('p', { class: 'muted' }, 'Carregando jogos…'));
+  try {
+    const fixture = sport === 'soccer' ? '?fixture=true' : '';
+    const data = await espn(`${sport}/${league.id}/teams/${team.id}/schedule${fixture}`);
+    if (pickedTeam() !== team) return;
+    const now = Date.now() / 1000;
+    const games = (data.events || []).map((ev) => {
+      const c = (ev.competitions || [])[0] || {};
+      const side = (ha) => ((c.competitors || []).find((x) => x.homeAway === ha) || {}).team || {};
+      const h = side('home'), a = side('away');
+      return {
+        id: ev.id, start: Math.round(Date.parse(ev.date) / 1000),
+        done: !!(c.status && c.status.type && c.status.type.completed),
+        home: h.shortDisplayName || h.displayName || '?', away: a.shortDisplayName || a.displayName || '?',
+        homeAbbr: h.abbreviation || '', awayAbbr: a.abbreviation || '',
+      };
+    }).filter((g) => !g.done && g.start > now - 3 * 3600).sort((a, b) => a.start - b.start).slice(0, 10);
+    box.replaceChildren();
+    if (!games.length) {
+      box.append(el('p', { class: 'muted' }, 'Nenhum jogo marcado nesta competição. Seguindo o time, o relógio mostra o próximo assim que for marcado.'));
+      return;
+    }
+    $('#spGamesTitle').hidden = false;
+    for (const g of games) {
+      box.append(el('div', { class: 'pick' },
+        el('span', { class: 'grow' }, el('div', {}, `${g.home} x ${g.away}`), el('div', { class: 'sub' }, fmtWhen(g.start))),
+        el('button', { class: 'small', onclick: () => followGame(g) }, 'Seguir')));
+    }
+  } catch (e) {
+    box.replaceChildren(el('p', { class: 'muted' }, 'Não foi possível carregar os jogos.'));
+  }
+}
+
+function listFull() {
+  const sp = devices[current] && devices[current].sports;
+  if (sp && (sp.follows || []).length >= MAX_FOLLOWS) {
+    toast('Lista cheia: remova um item antes.', true);
+    return true;
+  }
+  return false;
+}
+
+function followTeam() {
+  const team = pickedTeam();
+  if (!team || listFull()) return;
+  const league = pickedLeague();
+  publish('cmd/sports', {
+    action: 'add', sport: pickedSport().id, league: league.id, team: team.id,
+    label: `${team.short} · ${league.name}`,
+  });
+}
+
+function followGame(g) {
+  if (listFull()) return;
+  const league = pickedLeague();
+  publish('cmd/sports', {
+    action: 'add', sport: pickedSport().id, league: league.id, event: g.id,
+    label: `${g.home} x ${g.away} · ${league.name}`, start: g.start,
+    home: g.home, away: g.away, homeAbbr: g.homeAbbr, awayAbbr: g.awayAbbr,
+  });
 }
 
 // ------------------------------------------------------------ firmware update
@@ -615,6 +827,7 @@ function buildStaticControls() {
   for (const e of EMOTES) {
     $('#emotes').append(el('button', { type: 'button', onclick: () => insertEmote(e) }, e));
   }
+  $('#spSport').replaceChildren(...SPORTS.map((x) => el('option', { value: x.id }, x.name)));
   DAY_NAMES.forEach((name, i) => {
     $('#schedDaysWrap').append(el('label', {},
       el('input', Object.assign({ type: 'checkbox', value: i }, i >= 1 && i <= 5 ? { checked: '' } : {})), name));
@@ -654,6 +867,10 @@ function wire() {
     for (const cb of group.querySelectorAll('input[data-bit]')) cb.addEventListener('change', () => onMaskChange(group));
   }
   $('#gpsBtn').addEventListener('click', useGps);
+  $('#spSport').addEventListener('change', fillLeagues);
+  $('#spLeague').addEventListener('change', loadTeams);
+  $('#spTeam').addEventListener('change', loadGames);
+  $('#spFollowTeam').addEventListener('click', followTeam);
   $('#updateBtn').addEventListener('click', startUpdate);
   $('#checkBtn').addEventListener('click', () => checkUpdate(true));
   $('#morningTime').addEventListener('change', () => {

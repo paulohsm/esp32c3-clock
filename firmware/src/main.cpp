@@ -3,7 +3,8 @@
 // NTP clock, touch navigation, hourly chime, night mode, status LED, fixed-width
 // 4x6 font with 6x6 icons, remote control over MQTT/TLS (HiveMQ Cloud) — instant
 // messages, schedules/alarms, remote settings — and internet data fetched by the
-// clock itself: weather (Open-Meteo) and currency/crypto quotes (AwesomeAPI).
+// clock itself: weather (Open-Meteo), currency/crypto quotes (AwesomeAPI) and the
+// games followed in the app (ESPN).
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -22,9 +23,10 @@
 #include "pins.h"
 #include "schedule.h"
 #include "sound.h"
+#include "sports.h"
 #include "statusled.h"
 
-#define FW_VERSION "1.1.0"
+#define FW_VERSION "1.2.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -44,7 +46,8 @@ static const uint8_t* const QUOTE_ICONS[feeds::QUOTE_COUNT] = {
 
 // Touch cycle. Screens without data (or disabled in the settings) are skipped.
 enum Screen : uint8_t {
-  SCR_CLOCK, SCR_DATE, SCR_LONGDATE, SCR_WEATHER, SCR_RAIN, SCR_UV, SCR_SUN, SCR_QUOTE0,
+  SCR_CLOCK, SCR_DATE, SCR_LONGDATE, SCR_WEATHER, SCR_RAIN, SCR_UV, SCR_SUN, SCR_SPORTS,
+  SCR_QUOTE0,  // one screen per quote: keep last
 };
 static constexpr uint8_t SCR_COUNT = SCR_QUOTE0 + feeds::QUOTE_COUNT;
 
@@ -97,7 +100,7 @@ static uint8_t  carouselMask  = 0;      // screens of the running carousel
 static uint32_t carouselDurMs = 2000;   // time per screen of the running carousel
 static constexpr uint32_t SHOW_MS = 6000;  // "show now" from the app: time per screen
 
-// Power-on introduction: greeting → app address → weather, rain, quotes, date → clock.
+// Power-on introduction: greeting → app address → weather, rain, quotes, date, games → clock.
 enum IntroStep : uint8_t { INTRO_WAIT, INTRO_GREETING, INTRO_URL, INTRO_DATA, INTRO_DONE };
 static uint8_t  introStep = INTRO_WAIT;
 static bool     introForced = false;  // daily "good morning": runs even if the power-on intro is off
@@ -138,6 +141,17 @@ static void showMessage(const char* text, const icons::Anim& icon, uint8_t loops
                        icon.periodMs);
 }
 
+// Ball when a football (soccer) game is followed, trophy otherwise.
+static const icons::Anim& sportsIcon() {
+  for (uint8_t i = 0; i < sports::followCount; i++) {
+    if (strcmp(sports::follows[i].sport, "soccer") == 0) return icons::A_BALL;
+  }
+  return icons::A_TROPHY;
+}
+
+// Screens that scroll text instead of showing a still frame.
+static bool scrollingScreen(uint8_t s) { return s == SCR_LONGDATE || s == SCR_SPORTS; }
+
 static void goToScreen(uint8_t s) {
   screen = s;
   screenSince = millis();
@@ -152,6 +166,11 @@ static void goToScreen(uint8_t s) {
     }
     const auto& a = icons::A_CALENDAR;
     display::scrollStart(txt, a.frames, cfg::s.anim ? a.count : 1, 1, scrollMs(), a.periodMs);
+  } else if (s == SCR_SPORTS) {
+    static char txt[256];
+    sports::ticker(txt, sizeof(txt), time(nullptr));
+    const auto& a = sportsIcon();
+    display::scrollStart(txt, a.frames, cfg::s.anim ? a.count : 1, 1, scrollMs(), a.periodMs);
   } else if (display::isScrolling()) {
     display::scrollStop();
   }
@@ -160,7 +179,7 @@ static void goToScreen(uint8_t s) {
 // ------------------------------------------------------------- MQTT out
 
 static void publishJson(const char* suffix, JsonDocument& doc, bool retained) {
-  static char buf[2048];
+  static char buf[4096];
   size_t n = serializeJson(doc, buf, sizeof(buf));
   if (n > 0 && n < sizeof(buf)) mqtt_link::publish(suffix, buf, retained);
 }
@@ -211,6 +230,12 @@ static void publishQuotes() {
   publishJson("data/quotes", doc, true);
 }
 
+static void publishSports() {
+  JsonDocument doc;
+  sports::toJson(doc.to<JsonObject>());
+  publishJson("sports", doc, true);
+}
+
 // Sounds for connection events are muted in night mode and never cut into an
 // alarm or emergency.
 static bool connectionSoundsOk() { return !nightActive && !alarmActive && !emergencyActive; }
@@ -232,6 +257,7 @@ static void onMqttConnect() {
   publishSchedules();
   if (feeds::weather.valid) publishWeather();
   publishQuotes();
+  publishSports();
 }
 
 // Every new MQTT session: publish the state and play the "connected" tones.
@@ -331,6 +357,93 @@ static void onScheduleFire(const sched::Entry& e) {
   Serial.printf("Schedule #%u fired: %s\n", e.id, e.text);
 }
 
+// -------------------------------------------------------------- sports
+
+// Alerts raised during one sports::loop() call are joined into a single message.
+static char     sportText[240];
+static uint8_t  sportCount = 0;
+static bool     sportGoal = false;     // a goal among them: louder sound, flashing ball
+static bool     sportSoccer = false;
+
+static void onSportEvent(sports::Event ev, const sports::Follow& f, const sports::Game& g,
+                         int8_t scorer) {
+  const auto& s = cfg::s;
+  char part[120];
+  int hs = g.hs < 0 ? 0 : g.hs, as = g.as < 0 ? 0 : g.as;
+  switch (ev) {
+    case sports::EV_PRE: {
+      if (!s.sportPre) return;
+      time_t st = g.start;
+      tm t;
+      localtime_r(&st, &t);
+      uint32_t now = time(nullptr);
+      unsigned mins = g.start > now ? (g.start - now + 59) / 60 : 0;
+      snprintf(part, sizeof(part), "Daqui a %u min: %s x %s (%02d:%02d)", mins, g.home, g.away,
+               t.tm_hour, t.tm_min);
+      break;
+    }
+    case sports::EV_START:
+      if (!s.sportStart) return;
+      snprintf(part, sizeof(part), "Comecou: %s x %s", g.home, g.away);
+      break;
+    case sports::EV_SCORE:
+      if (!s.sportScore) return;
+      if (scorer >= 0) {
+        snprintf(part, sizeof(part), "GOL do %s! %s %d x %d %s", scorer == 0 ? g.home : g.away,
+                 g.home, hs, as, g.away);
+      } else {
+        snprintf(part, sizeof(part), "GOL! %s %d x %d %s", g.home, hs, as, g.away);
+      }
+      sportGoal = true;
+      break;
+    case sports::EV_PERIOD:
+      if (!s.sportScore) return;
+      snprintf(part, sizeof(part), "%s %d x %d %s (%s)", g.home, hs, as, g.away, g.detail);
+      break;
+    case sports::EV_FINAL:
+      if (!s.sportFinal) return;
+      snprintf(part, sizeof(part), "Fim de jogo: %s %d x %d %s", g.home, hs, as, g.away);
+      break;
+  }
+  if (sportCount) strlcat(sportText, "   ", sizeof(sportText));
+  else sportText[0] = '\0';
+  strlcat(sportText, part, sizeof(sportText));
+  sportCount++;
+  sportSoccer |= strcmp(f.sport, "soccer") == 0;
+  Serial.printf("sports: %s\n", part);
+}
+
+// Follows, alerts and live scores: one network request at most per call.
+static void runSports() {
+  sportCount = 0;
+  sportGoal = sportSoccer = false;
+  bool changed = sports::loop(time(nullptr), cfg::s.sportPre, onSportEvent);
+  if (changed) publishSports();
+  if (!sportCount || emergencyActive || alarmActive) return;
+  if (cfg::s.sportSound && !nightActive) {
+    if (sportGoal) sound::connected();  // rising fanfare
+    else sound::chime();
+  }
+  statusled::flash();
+  const auto& icon = sportGoal ? icons::A_GOAL : sportSoccer ? icons::A_BALL : icons::A_TROPHY;
+  showMessage(sportText, icon, sportGoal ? 3 : 2);
+}
+
+static void handleSportsCmd(const char* payload) {
+  JsonDocument doc;
+  if (deserializeJson(doc, payload) || !doc.is<JsonObject>()) {
+    publishAck("sports", false, "invalid JSON");
+    return;
+  }
+  const char* error = nullptr;
+  bool ok = sports::command(doc.as<JsonObjectConst>(), time(nullptr), error);
+  if (ok) {
+    publishSports();
+    sound::confirm();
+  }
+  publishAck("sports", ok, error);
+}
+
 // -------------------------------------------------------------- touch
 
 // Settings bit that enables a screen (0 for the clock, which is always on).
@@ -343,6 +456,7 @@ static uint8_t screenBit(uint8_t s) {
     case SCR_RAIN:     return cfg::SB_RAIN;
     case SCR_UV:       return cfg::SB_UV;
     case SCR_SUN:      return cfg::SB_SUN;
+    case SCR_SPORTS:   return cfg::SB_SPORTS;
     default:           return cfg::SB_QUOTES;
   }
 }
@@ -354,6 +468,7 @@ static bool screenHasData(uint8_t s) {
     case SCR_CLOCK: case SCR_DATE: case SCR_LONGDATE: return true;
     case SCR_WEATHER: case SCR_RAIN: case SCR_UV: return w;
     case SCR_SUN: return w && feeds::weather.sunrise[0];
+    case SCR_SPORTS: return sports::hasGames();
     default: {
       uint8_t q = s - SCR_QUOTE0;
       return (cfg::s.quotes & (1 << q)) && feeds::quotes[q].valid;
@@ -451,7 +566,7 @@ static void runIntro(bool ok, const tm& t) {
       if (!overlay) {
         static const uint8_t ORDER[] = {SCR_WEATHER, SCR_RAIN, SCR_QUOTE0, SCR_QUOTE0 + 1,
                                         SCR_QUOTE0 + 2, SCR_QUOTE0 + 3, SCR_QUOTE0 + 4,
-                                        SCR_DATE};
+                                        SCR_DATE, SCR_SPORTS};
         startCarouselSeq(ORDER, sizeof(ORDER), INTRO_SCREEN_MS);
         introStep = INTRO_DATA;
       }
@@ -617,6 +732,8 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     handleMessageCmd(payload);
   } else if (strcmp(topic, "cmd/schedule") == 0) {
     handleScheduleCmd(payload);
+  } else if (strcmp(topic, "cmd/sports") == 0) {
+    handleSportsCmd(payload);
   } else if (strcmp(topic, "cmd/beep") == 0) {
     JsonDocument doc;
     uint8_t timbre = cfg::s.timbre;
@@ -625,6 +742,10 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     publishAck("beep", true);
   } else if (strcmp(topic, "cmd/sync") == 0) {
     weatherDue = quotesDue = true;  // also refresh the internet data
+    const char* err = nullptr;
+    JsonDocument r;
+    r["action"] = "refresh";
+    sports::command(r.as<JsonObjectConst>(), time(nullptr), err);
     onMqttConnect();
     publishAck("sync", true);
   } else if (strcmp(topic, "cmd/alert") == 0) {
@@ -652,14 +773,15 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     publishAck("ota", true);
     runOta(url);
   } else if (strcmp(topic, "cmd/show") == 0) {
-    // Show a screen now: payload "weather" | "rain" | "uv" | "sun" | "quotes" | "date" |
-    // "longdate" (plain text or {"screen":"..."}).
+    // Show a screen now: payload "weather" | "rain" | "uv" | "sun" | "quotes" | "sports" |
+    // "date" | "longdate" (plain text or {"screen":"..."}).
     JsonDocument doc;
     const char* what = payload;
     if (payload[0] == '{' && !deserializeJson(doc, payload)) what = doc["screen"] | "";
     static const struct { const char* name; uint8_t bit; } SHOW[] = {
         {"date", cfg::SB_DATE}, {"weather", cfg::SB_WEATHER}, {"rain", cfg::SB_RAIN},
-        {"uv", cfg::SB_UV}, {"sun", cfg::SB_SUN}, {"quotes", cfg::SB_QUOTES}};
+        {"uv", cfg::SB_UV}, {"sun", cfg::SB_SUN}, {"quotes", cfg::SB_QUOTES},
+        {"sports", cfg::SB_SPORTS}};
     if (emergencyActive) { publishAck("show", false, "emergency alert active"); return; }
     if (alarmActive) stopAlarm();
     overlay = false;
@@ -944,6 +1066,9 @@ static void renderScreen() {
     case SCR_CLOCK: renderClock(ok, t); break;
     case SCR_DATE:  renderDate(ok, t);  break;
     case SCR_LONGDATE: return;
+    case SCR_SPORTS:
+      if (!screenHasData(screen)) goToScreen(SCR_CLOCK);
+      return;  // scrolling text
     default:
       if (!screenAvailable(screen)) {  // data went away (e.g. setting changed)
         goToScreen(SCR_CLOCK);
@@ -986,6 +1111,9 @@ static void printSettings() {
                     feeds::quotes[i].pct);
     }
   }
+  Serial.printf("sports: %u followed; alerts pre=%u min start=%d score=%d final=%d sound=%d\n",
+                sports::followCount, s.sportPre, s.sportStart, s.sportScore, s.sportFinal,
+                s.sportSound);
   Serial.printf("wifi=%s ip=%s rssi=%d  ntp=%s  mqtt=%s  fw=%s\n",
                 WiFi.status() == WL_CONNECTED ? "ok" : "down", WiFi.localIP().toString().c_str(),
                 WiFi.RSSI(), timeOk ? "ok" : "waiting", mqtt_link::connected() ? "ok" : "down",
@@ -1015,6 +1143,7 @@ static void printHelp() {
       "  intro               replay the power-on introduction [apresentacao]\n"
       "  ota <url>           install firmware from this project's GitHub Releases\n"
       "  alert <sec> <text>  emergency alert (touch to dismiss); 'alert 0' stops it [alerta]\n"
+      "  sports              followed games and their status [jogos]\n"
       "  test                play the hourly chime [teste]\n"
       "  wifireset           forget Wi-Fi and reboot into the setup portal"));
 }
@@ -1038,10 +1167,29 @@ static void runCommand(String line) {
   else if (cmd == "velocidade") cmd = "speed";
   else if (cmd == "alerta") cmd = "alert";
   else if (cmd == "apresentacao") cmd = "intro";
+  else if (cmd == "jogos") cmd = "sports";
 
   if (cmd == "help" || cmd == "?") { printHelp(); return; }
   if (cmd == "info") { printSettings(); return; }
   if (cmd == "test") { sound::chime(); return; }
+  if (cmd == "sports") {
+    for (uint8_t i = 0; i < sports::followCount; i++) {
+      const auto& f = sports::follows[i];
+      const auto& g = sports::games[i];
+      Serial.printf("%u. %s [%s/%s %s%s]", i, f.label, f.sport, f.league,
+                    f.team[0] ? "team " : "game ", f.team[0] ? f.team : f.event);
+      if (g.valid) {
+        Serial.printf(" -> %s %d x %d %s, state %u %s, start %lu\n", g.home, g.hs, g.as, g.away,
+                      g.state, g.detail, (unsigned long)g.start);
+      } else {
+        Serial.println(" -> no game yet");
+      }
+    }
+    static char txt[256];
+    sports::ticker(txt, sizeof(txt), time(nullptr));
+    Serial.println(txt);
+    return;
+  }
   if (cmd == "fetch") { weatherDue = quotesDue = true; return; }
   if (cmd == "msg") {
     static char msgBuf[160];
@@ -1183,6 +1331,7 @@ void setup() {
 
   cfg::load();
   sched::load();
+  sports::load();
   statusled::begin();
   sound::begin();
   display::begin();
@@ -1228,7 +1377,10 @@ void loop() {
   // A scroll finished: back to the clock.
   if (display::update()) {
     overlay = false;
-    if (screen == SCR_LONGDATE) screen = SCR_CLOCK;
+    if (scrollingScreen(screen)) {
+      if (carouselOn) screenSince = millis() - carouselDurMs;  // next carousel screen now
+      else screen = SCR_CLOCK;
+    }
   }
 
   // Emergency: siren without pause until touched, cancelled or timed out.
@@ -1248,8 +1400,9 @@ void loop() {
   }
 
   // Secondary screens return to the clock by themselves.
+  bool screenScrolling = scrollingScreen(screen) && display::isScrolling() && !overlay;
   if (carouselOn) {
-    if (millis() - screenSince >= carouselDurMs) {
+    if (millis() - screenSince >= carouselDurMs && !screenScrolling) {
       // Next carousel screen, or back to the clock after the last one.
       uint8_t s = SCR_CLOCK;
       while (carouselPos < carouselLen) {
@@ -1259,7 +1412,7 @@ void loop() {
       if (s == SCR_CLOCK) carouselOn = false;
       goToScreen(s);
     }
-  } else if (screen != SCR_CLOCK && screen != SCR_LONGDATE && !overlay &&
+  } else if (screen != SCR_CLOCK && !scrollingScreen(screen) && !overlay &&
       millis() - screenSince > SCREEN_TIMEOUT_MS) {
     goToScreen(SCR_CLOCK);
   }
@@ -1353,6 +1506,7 @@ void loop() {
   // (a fetch blocks for a second or two).
   if (wifiUp && timeOk && !display::isScrolling() && !alarmActive && !emergencyActive) {
     uint32_t now = millis();
+    bool fetched = true;
     if (weatherDue || (int32_t)(now - nextWeatherAt) >= 0) {
       weatherDue = false;
       bool okW = feeds::fetchWeather(cfg::s.lat, cfg::s.lon);
@@ -1367,7 +1521,10 @@ void loop() {
         nextQuotesAt = millis() + (okQ ? cfg::s.quotesMin * 60000UL : RETRY_MS);
         if (okQ) publishQuotes();
       }
+    } else {
+      fetched = false;
     }
+    if (!fetched) runSports();
   }
 
   static uint32_t lastInfo = 0;

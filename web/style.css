@@ -89,8 +89,8 @@ code { color: var(--accent-2); }
 .device .grow { flex: 1; min-width: 0; }
 .device .chev { color: var(--muted); font-size: 1.4rem; }
 
-.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
-.tabs button { min-height: 40px; padding: 6px; font-size: .9rem; }
+.tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+.tabs button { min-height: 40px; padding: 6px 2px; font-size: .85rem; }
 .tabs button.active { background: var(--accent); border-color: var(--accent); color: #1b0d08; font-weight: 650; }
 
 .banner { background: #3a1e1a; border: 1px solid #5a2a2a; color: var(--accent-2); padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; font-size: .9rem; }
@@ -109,6 +109,13 @@ code { color: var(--accent-2); }
 .sched .sub { color: var(--muted); font-size: .85rem; }
 .sched button { min-height: 36px; padding: 4px 12px; }
 .tag { font-size: .72rem; padding: 2px 8px; border-radius: 99px; background: #3a2520; color: var(--accent-2); margin-left: 6px; }
+.tag.live { background: #5a1d1d; color: #ffb4a8; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+.game .text { white-space: normal; }
+.game .score { font-weight: 650; font-variant-numeric: tabular-nums; }
+.pick { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.pick .grow { flex: 1; min-width: 0; }
+.pick .sub { color: var(--muted); font-size: .85rem; }
 
 .val { color: var(--text); font-weight: 650; }
 

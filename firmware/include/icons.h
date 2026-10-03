@@ -547,6 +547,52 @@ constexpr Icon ARROW_DOWN_B = {
   0b00000000,
 };
 
+// Football (soccer) ball spinning; GOAL flashes it.
+constexpr Icon BALL = {
+  0b00000000,
+  0b00111100,
+  0b01011010,
+  0b01100110,
+  0b01100110,
+  0b01011010,
+  0b00111100,
+  0b00000000,
+};
+
+constexpr Icon BALL_B = {
+  0b00000000,
+  0b00111100,
+  0b01100110,
+  0b01011010,
+  0b01011010,
+  0b01100110,
+  0b00111100,
+  0b00000000,
+};
+
+// Trophy glinting (other sports).
+constexpr Icon TROPHY = {
+  0b00000000,
+  0b01111110,
+  0b01011010,
+  0b00111100,
+  0b00011000,
+  0b00011000,
+  0b00111100,
+  0b00000000,
+};
+
+constexpr Icon TROPHY_B = {
+  0b00000000,
+  0b01111110,
+  0b01111110,
+  0b00111100,
+  0b00011000,
+  0b00011000,
+  0b00111100,
+  0b00000000,
+};
+
 // Animated icons: a list of frames and the time each frame stays.
 struct Anim {
   const uint8_t* const* frames;
@@ -592,6 +638,12 @@ static const uint8_t* const A_UP_FRAMES[] = {ARROW_UP, ARROW_UP_B};
 constexpr Anim A_UP = {A_UP_FRAMES, 2, 300};
 static const uint8_t* const A_DOWN_FRAMES[] = {ARROW_DOWN, ARROW_DOWN_B};
 constexpr Anim A_DOWN = {A_DOWN_FRAMES, 2, 300};
+static const uint8_t* const A_BALL_FRAMES[] = {BALL, BALL_B};
+constexpr Anim A_BALL = {A_BALL_FRAMES, 2, 400};
+static const uint8_t* const A_GOAL_FRAMES[] = {BALL, BLANK};
+constexpr Anim A_GOAL = {A_GOAL_FRAMES, 2, 150};
+static const uint8_t* const A_TROPHY_FRAMES[] = {TROPHY, TROPHY_B};
+constexpr Anim A_TROPHY = {A_TROPHY_FRAMES, 2, 500};
 
 // Current frame of an animation (first frame when animations are off).
 inline const uint8_t* frame(const Anim& a, bool animate) {

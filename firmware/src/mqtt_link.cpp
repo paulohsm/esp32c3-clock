@@ -47,7 +47,7 @@ void begin(const char* deviceId, Handler onMessage, void (*onConnect)(), void (*
   net.setCACert(ROOT_CA_PEM);
   net.setHandshakeTimeout(10);
   client.setServer(MQTT_HOST, MQTT_PORT);
-  client.setBufferSize(2048);   // JSON with the schedule list can be large
+  client.setBufferSize(4096);   // JSON with the schedules or followed games can be large
   client.setKeepAlive(30);
   client.setSocketTimeout(10);
   client.setCallback(onRaw);

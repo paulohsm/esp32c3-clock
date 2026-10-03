@@ -72,6 +72,13 @@ ART = {
     'ARROW_UP_B': (None, [".####.", "######", "..##..", "..##..", "..##..", "......"]),
     'ARROW_DOWN': (None, ["..##..", "..##..", "..##..", "######", ".####.", "..##.."]),
     'ARROW_DOWN_B': (None, ["......", "..##..", "..##..", "..##..", "######", ".####."]),
+    # sports
+    'BALL': ("Football (soccer) ball spinning; GOAL flashes it.",
+             [".####.", "#.##.#", "##..##", "##..##", "#.##.#", ".####."]),
+    'BALL_B': (None, [".####.", "##..##", "#.##.#", "#.##.#", "##..##", ".####."]),
+    'TROPHY': ("Trophy glinting (other sports).",
+               ["######", "#.##.#", ".####.", "..##..", "..##..", ".####."]),
+    'TROPHY_B': (None, ["######", "######", ".####.", "..##..", "..##..", ".####."]),
 }
 
 # Animated icons: name -> (frames, milliseconds per frame)
@@ -95,6 +102,9 @@ ANIMS = {
     'A_WIFI_FAIL': (['WIFI_OFF', 'BLANK'], 250),
     'A_UP': (['ARROW_UP', 'ARROW_UP_B'], 300),
     'A_DOWN': (['ARROW_DOWN', 'ARROW_DOWN_B'], 300),
+    'A_BALL': (['BALL', 'BALL_B'], 400),
+    'A_GOAL': (['BALL', 'BLANK'], 150),
+    'A_TROPHY': (['TROPHY', 'TROPHY_B'], 500),
 }
 
 
