@@ -17,6 +17,7 @@
 #include "config.h"
 #include "display.h"
 #include "feeds.h"
+#include "hourglass.h"
 #include "icons.h"
 #include "mqtt_link.h"
 #include "ota.h"
@@ -26,7 +27,7 @@
 #include "sports.h"
 #include "statusled.h"
 
-#define FW_VERSION "1.3.0"
+#define FW_VERSION "1.4.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -894,32 +895,32 @@ static void drawFill(const tm& t) {
   }
 }
 
-// One-minute hourglass: six grains fall (one every 10 s); it flips when the minute ends.
+// One-minute hourglass (frames in hourglass.h): the sand falls during the minute,
+// then the hourglass turns over, finishing exactly when the minute changes.
 static void drawHourglass(const tm& t) {
-  static int lastMin = -1;
-  static uint32_t flipAt = 0;
-  if (t.tm_min != lastMin) {
-    if (lastMin >= 0) flipAt = millis() | 1;
-    lastMin = t.tm_min;
+  // Milliseconds into the current minute: the clock only gives whole seconds,
+  // so remember when the second last changed.
+  static int lastSec = -1;
+  static uint32_t secStartMs = 0;
+  if (t.tm_sec != lastSec) {
+    lastSec = t.tm_sec;
+    secStartMs = millis();
   }
-  if (cfg::s.anim && flipAt && millis() - flipAt < 450) {
-    // Lying on its side, mid-turn: caps left/right, the sand on the left.
-    for (int y = 1; y <= 6; y++) { display::fbPixel(0, y); display::fbPixel(7, y); }
-    for (int y = 2; y <= 5; y++) display::fbPixel(1, y);
-    display::fbPixel(2, 3);
-    display::fbPixel(2, 4);
-    return;
+  uint32_t into = millis() - secStartMs;
+  uint32_t ms = t.tm_sec * 1000UL + (into > 999 ? 999 : into);
+
+  const uint32_t turnMs = hourglass::TURN_FRAMES * hourglass::TURN_FRAME_MS;  // 913 ms
+  const uint32_t sandMs = 60000UL - turnMs;
+  uint8_t frame;
+  if (cfg::s.anim && ms >= sandMs) {
+    frame = hourglass::SAND_FRAMES + (ms - sandMs) / hourglass::TURN_FRAME_MS;
+    if (frame >= hourglass::FRAME_COUNT) frame = hourglass::FRAME_COUNT - 1;
+  } else {
+    frame = ms * hourglass::SAND_FRAMES / 60000UL;  // turning off: the sand only
+    if (cfg::s.anim) frame = ms * hourglass::SAND_FRAMES / sandMs;
+    if (frame >= hourglass::SAND_FRAMES) frame = hourglass::SAND_FRAMES - 1;
   }
-  for (int x = 1; x <= 6; x++) { display::fbPixel(x, 0); display::fbPixel(x, 7); }
-  static const uint8_t TOP[6][2] = {{2, 1}, {5, 1}, {3, 1}, {4, 1}, {3, 2}, {4, 2}};  // leaves first
-  static const uint8_t BOT[6][2] = {{3, 6}, {4, 6}, {2, 6}, {5, 6}, {3, 5}, {4, 5}};  // lands first
-  int fallen = t.tm_sec / 10;
-  for (int k = fallen; k < 6; k++) display::fbPixel(TOP[k][0], TOP[k][1]);
-  for (int k = 0; k < fallen; k++) display::fbPixel(BOT[k][0], BOT[k][1]);
-  if (cfg::s.anim) {  // a grain falling through the neck
-    uint32_t ph = (millis() / 150) % 3;
-    if (ph < 2) display::fbPixel(3 + (t.tm_sec & 1), 3 + ph);
-  }
+  display::fbIcon(0, hourglass::FRAMES[frame]);
 }
 
 static void drawClockIcon(const tm& t) {
