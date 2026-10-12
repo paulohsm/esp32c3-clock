@@ -17,7 +17,7 @@
 #include "config.h"
 #include "display.h"
 #include "feeds.h"
-#include "hourglass.h"
+#include "art.h"
 #include "icons.h"
 #include "mqtt_link.h"
 #include "ota.h"
@@ -248,7 +248,7 @@ static void onMqttConnected() {
 static void onMqttFailed(int state) {
   if (connectionSoundsOk()) sound::failed();
   if (!overlay && !display::isScrolling() && !alarmActive && !emergencyActive) {
-    showMessage("Falha na conexao", icons::A_WIFI_FAIL, 1);
+    showMessage("Falha na conexao", art::A_NO_WIFI, 1);
   }
 }
 
@@ -670,7 +670,7 @@ static void runOta(const char* url) {
   sound::failed();
   static char msg[128];
   snprintf(msg, sizeof(msg), "Falha na atualizacao: %s", error);
-  showMessage(msg, icons::A_WIFI_FAIL, 1);
+  showMessage(msg, art::A_NO_WIFI, 1);
 }
 
 // ----------------------------------------------------------- MQTT in
@@ -895,32 +895,13 @@ static void drawFill(const tm& t) {
   }
 }
 
-// One-minute hourglass (frames in hourglass.h): the sand falls during the minute,
-// then the hourglass turns over, finishing exactly when the minute changes.
+// Hourglass (frames in art.h): a 2-second loop of 24 frames, 83 ms each — the sand
+// falls, then the hourglass turns over. With animations off, it stands still.
 static void drawHourglass(const tm& t) {
-  // Milliseconds into the current minute: the clock only gives whole seconds,
-  // so remember when the second last changed.
-  static int lastSec = -1;
-  static uint32_t secStartMs = 0;
-  if (t.tm_sec != lastSec) {
-    lastSec = t.tm_sec;
-    secStartMs = millis();
-  }
-  uint32_t into = millis() - secStartMs;
-  uint32_t ms = t.tm_sec * 1000UL + (into > 999 ? 999 : into);
-
-  const uint32_t turnMs = hourglass::TURN_FRAMES * hourglass::TURN_FRAME_MS;  // 913 ms
-  const uint32_t sandMs = 60000UL - turnMs;
-  uint8_t frame;
-  if (cfg::s.anim && ms >= sandMs) {
-    frame = hourglass::SAND_FRAMES + (ms - sandMs) / hourglass::TURN_FRAME_MS;
-    if (frame >= hourglass::FRAME_COUNT) frame = hourglass::FRAME_COUNT - 1;
-  } else {
-    frame = ms * hourglass::SAND_FRAMES / 60000UL;  // turning off: the sand only
-    if (cfg::s.anim) frame = ms * hourglass::SAND_FRAMES / sandMs;
-    if (frame >= hourglass::SAND_FRAMES) frame = hourglass::SAND_FRAMES - 1;
-  }
-  display::fbIcon(0, hourglass::FRAMES[frame]);
+  (void)t;
+  uint8_t frame = 0;
+  if (cfg::s.anim) frame = (millis() / art::FRAME_MS) % art::FRAME_COUNT;
+  display::fbIcon(0, art::HOURGLASS[frame]);
 }
 
 static void drawClockIcon(const tm& t) {
@@ -1034,10 +1015,11 @@ static void renderClock(bool ok, const tm& t) {
     display::fbText(centerX("--:--"), y, "--:--");
     return;
   }
-  // No internet: the crossed Wi-Fi icon blinks twice every 5 seconds.
+  // No internet: the crossed Wi-Fi icon flashes twice (0.3 s each) every 5 seconds
+  // in place of the clock icon, for as long as the clock is offline.
   uint32_t phase = millis() % 5000;
   bool warn = !internetOk && (phase < 300 || (phase >= 600 && phase < 900));
-  if (warn) display::fbIcon(0, icons::WIFI_OFF);
+  if (warn) display::fbIcon(0, art::NO_WIFI);
   else drawClockIcon(t);
   drawTime(t.tm_hour, t.tm_min, t.tm_sec % 2 == 0);
 }

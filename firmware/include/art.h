@@ -1,19 +1,20 @@
 #pragma once
 #include <Arduino.h>
+#include "icons.h"
 
-// One-minute hourglass, drawn by Criscila in the LED Matrix Editor
-// (xantorohara.github.io/led-matrix-editor): 24 frames of 8x8.
+// 8x8 artwork drawn by Criscila in the LED Matrix Editor
+// (xantorohara.github.io/led-matrix-editor). It uses the whole 8x8 icon cell.
 // One byte per row (top to bottom); bit 7 = leftmost column.
-//   frames 0–12:  the sand falls (spread over the minute)
-//   frames 13–23: the whole hourglass turns over (83 ms each, ending at :00)
-namespace hourglass {
+namespace art {
 
-constexpr uint8_t SAND_FRAMES = 13;
-constexpr uint8_t TURN_FRAMES = 11;
-constexpr uint8_t FRAME_COUNT = SAND_FRAMES + TURN_FRAMES;
-constexpr uint16_t TURN_FRAME_MS = 83;
+// ------------------------------------------------------------ hourglass
+// Hourglass, a 2-second loop: 24 frames at 12 frames per second (83 ms each).
+//   frames 0–12:  the sand falls
+//   frames 13–23: the whole hourglass turns over
+constexpr uint8_t FRAME_COUNT = 24;
+constexpr uint16_t FRAME_MS = 83;
 
-constexpr uint8_t FRAMES[FRAME_COUNT][8] = {
+constexpr uint8_t HOURGLASS[FRAME_COUNT][8] = {
   {  // 0
     0b01111110,
     0b11111111,
@@ -155,8 +156,8 @@ constexpr uint8_t FRAMES[FRAME_COUNT][8] = {
     0b01111110
   },
   {  // 14 (turning)
-    0b01101100,
-    0b01000011,
+    0b00101100,
+    0b01000010,
     0b10000001,
     0b10000000,
     0b11111001,
@@ -175,17 +176,17 @@ constexpr uint8_t FRAMES[FRAME_COUNT][8] = {
     0b00111100
   },
   {  // 16 (turning)
-    0b00110110,
+    0b00110100,
     0b11000010,
     0b10000001,
     0b11110001,
     0b11110000,
     0b11110001,
-    0b01110011,
+    0b01110010,
     0b01111100
   },
   {  // 17 (turning)
-    0b01111010,
+    0b01111000,
     0b11000010,
     0b11000001,
     0b11110001,
@@ -216,23 +217,23 @@ constexpr uint8_t FRAMES[FRAME_COUNT][8] = {
   },
   {  // 20 (turning)
     0b01111100,
-    0b01110011,
-    0b11110000,
+    0b01110010,
+    0b11110001,
     0b11110000,
     0b11110001,
     0b10000001,
     0b11000010,
-    0b00110010
+    0b00110100
   },
   {  // 21 (turning)
     0b00111100,
     0b01110010,
     0b11110001,
-    0b11110000,
+    0b11110001,
     0b10000000,
     0b10000001,
     0b01000010,
-    0b00100100
+    0b00101100
   },
   {  // 22 (turning)
     0b00111110,
@@ -240,9 +241,9 @@ constexpr uint8_t FRAMES[FRAME_COUNT][8] = {
     0b11111001,
     0b11111001,
     0b10000000,
-    0b10000000,
-    0b01000011,
-    0b01001100
+    0b10000001,
+    0b01000001,
+    0b00101110
   },
   {  // 23 (turning)
     0b00111110,
@@ -256,4 +257,21 @@ constexpr uint8_t FRAMES[FRAME_COUNT][8] = {
   }
 };
 
-}  // namespace hourglass
+// ------------------------------------------------------------ no internet
+// Wi-Fi crossed out: flashes in place of the clock icon while the clock is offline.
+constexpr uint8_t NO_WIFI[8] = {
+  0b00011001,
+  0b01100110,
+  0b10000101,
+  0b01111110,
+  0b10010001,
+  0b00111100,
+  0b01000000,
+  0b10011000
+};
+
+// Blinking version, for messages such as "Falha na conexao".
+static const uint8_t* const A_NO_WIFI_FRAMES[] = {NO_WIFI, icons::BLANK};
+constexpr icons::Anim A_NO_WIFI = {A_NO_WIFI_FRAMES, 2, 400};
+
+}  // namespace art
