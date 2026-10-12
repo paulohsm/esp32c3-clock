@@ -40,6 +40,8 @@ void clamp() {
   s.welcome[WELCOME_LEN - 1] = '\0';
   if (s.morningHour > 23) s.morningHour = 7;
   if (s.morningMin > 59) s.morningMin = 0;
+  if (s.factHour > 23) s.factHour = 8;
+  if (s.factMin > 59) s.factMin = 0;
   if (s.sportPre > 120) s.sportPre = 120;
   s.name[NAME_LEN - 1] = '\0';
   if (s.name[0] == '\0') strlcpy(s.name, "Clock", NAME_LEN);
@@ -80,6 +82,9 @@ void load() {
   s.morning      = prefs.getBool("morning", true);
   s.morningHour  = prefs.getUChar("mornh", 7);
   s.morningMin   = prefs.getUChar("mornm", 0);
+  s.fact         = prefs.getBool("fact", true);
+  s.factHour     = prefs.getUChar("facth", 8);
+  s.factMin      = prefs.getUChar("factm", 0);
   // First boot with sports support: add the new "games" screen to the touch cycle.
   if (!prefs.isKey("spre")) s.screens |= SB_SPORTS;
   s.sportPre     = prefs.getUChar("spre", 30);
@@ -126,6 +131,9 @@ void save() {
   prefs.putBool("morning", s.morning);
   prefs.putUChar("mornh", s.morningHour);
   prefs.putUChar("mornm", s.morningMin);
+  prefs.putBool("fact", s.fact);
+  prefs.putUChar("facth", s.factHour);
+  prefs.putUChar("factm", s.factMin);
   prefs.putUChar("spre", s.sportPre);
   prefs.putBool("sstart", s.sportStart);
   prefs.putBool("sscore", s.sportScore);
@@ -169,6 +177,9 @@ void toJson(JsonObject o) {
   o["morning"]      = s.morning;
   o["morningHour"]  = s.morningHour;
   o["morningMin"]   = s.morningMin;
+  o["fact"]         = s.fact;
+  o["factHour"]     = s.factHour;
+  o["factMin"]      = s.factMin;
   o["sportPre"]     = s.sportPre;
   o["sportStart"]   = s.sportStart;
   o["sportScore"]   = s.sportScore;
@@ -238,6 +249,9 @@ bool fromJson(JsonObjectConst o) {
   changed |= setIf(o, "morning", s.morning);
   changed |= setIf(o, "morningHour", s.morningHour);
   changed |= setIf(o, "morningMin", s.morningMin);
+  changed |= setIf(o, "fact", s.fact);
+  changed |= setIf(o, "factHour", s.factHour);
+  changed |= setIf(o, "factMin", s.factMin);
   changed |= setIf(o, "sportPre", s.sportPre);
   changed |= setIf(o, "sportStart", s.sportStart);
   changed |= setIf(o, "sportScore", s.sportScore);

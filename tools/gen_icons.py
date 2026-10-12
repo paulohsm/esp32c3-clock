@@ -72,6 +72,10 @@ ART = {
     'ARROW_UP_B': (None, [".####.", "######", "..##..", "..##..", "..##..", "......"]),
     'ARROW_DOWN': (None, ["..##..", "..##..", "..##..", "######", ".####.", "..##.."]),
     'ARROW_DOWN_B': (None, ["......", "..##..", "..##..", "..##..", "######", ".####."]),
+    # "on this day" (Wikipedia): an open book whose page turns
+    'BOOK': ("Open book; a page turns.", ["##..##", "#.##.#", "#.##.#", "#.##.#", "#.##.#", "######"]),
+    'BOOK_B': (None, ["##.#..", "#.####", "#.##.#", "#.##.#", "#.##.#", "######"]),
+    'BOOK_C': (None, ["#..###", "####.#", "#.##.#", "#.##.#", "#.##.#", "######"]),
     # sports
     'BALL': ("Football (soccer) ball spinning; GOAL flashes it.",
              [".####.", "#.##.#", "##..##", "##..##", "#.##.#", ".####."]),
@@ -102,6 +106,7 @@ ANIMS = {
     'A_WIFI_FAIL': (['WIFI_OFF', 'BLANK'], 250),
     'A_UP': (['ARROW_UP', 'ARROW_UP_B'], 300),
     'A_DOWN': (['ARROW_DOWN', 'ARROW_DOWN_B'], 300),
+    'A_BOOK': (['BOOK', 'BOOK', 'BOOK_B', 'BOOK_C'], 300),
     'A_BALL': (['BALL', 'BALL_B'], 400),
     'A_GOAL': (['BALL', 'BLANK'], 150),
     'A_TROPHY': (['TROPHY', 'TROPHY_B'], 500),

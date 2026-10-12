@@ -121,9 +121,22 @@ static void utf8ToAscii(const char* in, char* out, size_t outLen) {
       p += 2;
       continue;
     }
-    if (c == 0xC2 && p[1] == 0xB0) {  // degree sign
-      out[o++] = 'o';
+    if (c == 0xC2 && p[1]) {  // degree sign, ordinals (1º, 1ª), no-break space
+      uint8_t d = p[1];
+      if (d == 0xB0 || d == 0xBA) out[o++] = 'o';
+      else if (d == 0xAA) out[o++] = 'a';
+      else if (d == 0xA0) out[o++] = ' ';
       p += 2;
+      continue;
+    }
+    if (c == 0xE2 && p[1] == 0x80 && p[2]) {  // typographic punctuation (Wikipedia texts)
+      uint8_t d = p[2];
+      if (d == 0x93 || d == 0x94) out[o++] = '-';                    // – —
+      else if (d == 0x98 || d == 0x99) out[o++] = '\'';              // ‘ ’
+      else if (d == 0x9C || d == 0x9D) out[o++] = '"';               // “ ”
+      else if (d == 0xA6) { out[o++] = '.'; if (o + 2 < outLen) { out[o++] = '.'; out[o++] = '.'; } }  // …
+      else if (d == 0xAF) out[o++] = ' ';                            // narrow no-break space
+      p += 3;
       continue;
     }
     // Any other multi-byte sequence (emoji etc.): skip it.
@@ -134,7 +147,7 @@ static void utf8ToAscii(const char* in, char* out, size_t outLen) {
 }
 
 // ------------------------------------------------------------- scroller
-static uint8_t scol[1600];   // pre-rendered text columns
+static uint8_t scol[2400];   // pre-rendered text columns (about 400 characters)
 static uint16_t sLen = 0;
 static int16_t sPos = 0;     // position of text column 0 relative to the area's left edge
 static uint8_t sAreaX = 0, sAreaW = display::WIDTH;
@@ -333,7 +346,7 @@ void fbPush(Transition t) {
 
 void scrollStart(const char* utf8Text, const uint8_t* const* iconFrames, uint8_t frameCount,
                  uint8_t loops, uint16_t speedMs, uint16_t framePeriodMs) {
-  static char ascii[256];
+  static char ascii[400];
   utf8ToAscii(utf8Text, ascii, sizeof(ascii));
 
   sLen = 0;

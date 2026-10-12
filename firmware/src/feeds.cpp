@@ -9,6 +9,7 @@ namespace feeds {
 
 Weather weather;
 Quote quotes[QUOTE_COUNT];
+Fact fact;
 const char* const QUOTE_CODES[QUOTE_COUNT] = {"USD", "EUR", "GBP", "BTC", "ETH"};
 
 // "2026-09-28T05:24" → "05:24"
@@ -70,6 +71,58 @@ bool parseQuotes(JsonDocument& doc, uint8_t mask) {
   return any;
 }
 
+// The sentence follows "Sabia que, na data de hoje em 1500, ...": an article or a
+// preposition at the start goes lowercase; names keep their capital letter.
+static void lowerLeadingWord(char* t) {
+  static const char* const WORDS[] = {"O ", "A ", "Os ", "As ", "Um ", "Uma ", "Uns ", "Umas ",
+                                      "Em ", "No ", "Na ", "Nos ", "Nas ", "Durante ", "Após ",
+                                      "Com ", "Por ", "Pela ", "Pelo "};
+  for (const char* w : WORDS) {
+    if (strncmp(t, w, strlen(w)) == 0) {
+      t[0] = tolower(static_cast<unsigned char>(t[0]));
+      return;
+    }
+  }
+}
+
+// Wikipedia "on this day": {"selected":[{"text","year"},...]} (the main-page list) or,
+// if that list is empty, {"events":[...]} (every event of the day).
+bool parseFact(JsonDocument& doc, uint8_t month, uint8_t day, uint32_t pick) {
+  JsonArrayConst list = doc["selected"];
+  if (list.size() == 0) list = doc["events"];
+  size_t n = 0;
+  for (JsonObjectConst e : list) {
+    const char* t = e["text"] | "";
+    if (*t && e["year"].is<int>()) n++;
+  }
+  if (!n) return false;
+  size_t want = pick % n, k = 0;
+  for (JsonObjectConst e : list) {
+    const char* t = e["text"] | "";
+    if (!*t || !e["year"].is<int>()) continue;
+    if (k++ != want) continue;
+    Fact f;
+    f.year = e["year"].as<int>();
+    strlcpy(f.text, t, sizeof(f.text));
+    if (strlen(t) >= sizeof(f.text)) {  // cut: don't leave half a UTF-8 character
+      size_t len = strlen(f.text);
+      while (len && (static_cast<uint8_t>(f.text[len - 1]) & 0xC0) == 0x80) len--;
+      if (len && (static_cast<uint8_t>(f.text[len - 1]) & 0x80)) len--;
+      f.text[len] = '\0';
+    }
+    lowerLeadingWord(f.text);
+    f.month = month;
+    f.day = day;
+    f.choices = n > 255 ? 255 : n;
+    f.fetchedAt = time(nullptr);
+    f.valid = true;
+    fact = f;
+    Serial.printf("feeds: fact %d (1 of %u): %s\n", f.year, (unsigned)n, f.text);
+    return true;
+  }
+  return false;
+}
+
 #ifndef FEEDS_HOST_TEST
 // ------------------------------------------------------------ network
 
@@ -77,9 +130,11 @@ bool parseQuotes(JsonDocument& doc, uint8_t mask) {
 // server certificate is not pinned (their CAs change more often than firmware).
 static WiFiClientSecure tls;
 
-static bool getJson(const char* url, JsonDocument& doc, JsonDocument* filter = nullptr) {
+static bool getJson(const char* url, JsonDocument& doc, JsonDocument* filter = nullptr,
+                    const char* userAgent = nullptr) {
   tls.setInsecure();
   HTTPClient http;
+  if (userAgent) http.setUserAgent(userAgent);
   http.useHTTP10(true);  // no chunked encoding → we can parse straight from the stream
   http.setTimeout(8000);
   http.setConnectTimeout(8000);
@@ -138,6 +193,24 @@ bool fetchQuotes(uint8_t mask) {
   return parseQuotes(doc, mask);
 }
 
+bool fetchFact(uint8_t month, uint8_t day) {
+  char url[128];
+  snprintf(url, sizeof(url),
+           "https://pt.wikipedia.org/api/rest_v1/feed/onthisday/selected/%02u/%02u", month, day);
+  // The response also carries each event's linked articles (summaries, pictures):
+  // keep only the sentence and the year.
+  JsonDocument filter;
+  filter["selected"][0]["text"] = true;
+  filter["selected"][0]["year"] = true;
+  JsonDocument doc;
+  // Wikimedia asks every client to identify itself with a way to reach its author.
+  if (!getJson(url, doc, &filter,
+               "esp32c3-clock (https://github.com/paulohsm/esp32c3-clock)")) {
+    return false;
+  }
+  return parseFact(doc, month, day, esp_random());
+}
+
 #endif  // FEEDS_HOST_TEST
 
 void weatherToJson(JsonObject o) {
@@ -158,6 +231,17 @@ void weatherToJson(JsonObject o) {
   o["sunrise"] = w.sunrise;
   o["sunset"] = w.sunset;
   o["at"] = w.fetchedAt;
+}
+
+void factToJson(JsonObject o) {
+  o["valid"] = fact.valid;
+  if (!fact.valid) return;
+  o["year"] = fact.year;
+  o["text"] = fact.text;
+  o["month"] = fact.month;
+  o["day"] = fact.day;
+  o["choices"] = fact.choices;
+  o["at"] = fact.fetchedAt;
 }
 
 void quotesToJson(JsonObject o) {

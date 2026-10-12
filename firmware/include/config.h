@@ -70,6 +70,11 @@ struct Settings {
   uint8_t  morningHour = 7;
   uint8_t  morningMin  = 0;
 
+  // "On this day": a historical event from Wikipedia, every day at a set time.
+  bool     fact        = true;
+  uint8_t  factHour    = 8;
+  uint8_t  factMin     = 0;
+
   // Sports alerts (the followed games themselves are in sports.h)
   uint8_t  sportPre    = 30;              // minutes before the start (0 = no warning)
   bool     sportStart  = true;            // "the game started"

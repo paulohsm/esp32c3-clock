@@ -27,7 +27,7 @@
 #include "sports.h"
 #include "statusled.h"
 
-#define FW_VERSION "1.4.0"
+#define FW_VERSION "1.5.0"
 
 static const char* AP_NAME = "Relogio-Config";
 static const char* AP_PASS = "relogio123";  // setup network password (min. 8 chars)
@@ -108,6 +108,12 @@ static bool     introForced = false;  // daily "good morning": runs even if the 
 static constexpr uint32_t INTRO_MAX_WAIT_MS = 25000;  // wait this long for the weather
 static constexpr uint32_t INTRO_SCREEN_MS   = 3000;
 static bool     quotesDue     = true;
+
+// "On this day" (Wikipedia): fetched once a day, shown at the configured time.
+static bool     factDue       = true;   // fetch now (boot, new day, "fetch" command)
+static uint32_t nextFactAt    = 0;      // millis: earliest next try after a failure
+static bool     factPending   = false;  // the time came: show as soon as the screen is free
+static uint32_t factPendingAt = 0;
 
 // ------------------------------------------------------------- helpers
 
@@ -225,6 +231,12 @@ static void publishWeather() {
   publishJson("data/weather", doc, true);
 }
 
+static void publishFact() {
+  JsonDocument doc;
+  feeds::factToJson(doc.to<JsonObject>());
+  publishJson("data/fact", doc, true);
+}
+
 static void publishQuotes() {
   JsonDocument doc;
   feeds::quotesToJson(doc.to<JsonObject>());
@@ -258,6 +270,7 @@ static void onMqttConnect() {
   publishSchedules();
   if (feeds::weather.valid) publishWeather();
   publishQuotes();
+  publishFact();
   publishSports();
 }
 
@@ -356,6 +369,23 @@ static void onScheduleFire(const sched::Entry& e) {
     showMessage(e.text, icons::A_ENVELOPE, 3);
   }
   Serial.printf("Schedule #%u fired: %s\n", e.id, e.text);
+}
+
+// ------------------------------------------------------- on this day
+
+// "Sabia que, na data de hoje em 1492, ..." Returns false when there is nothing to show.
+static bool showFact(bool withSound) {
+  const auto& f = feeds::fact;
+  if (!f.valid) return false;
+  static char txt[400];
+  char year[16];
+  if (f.year < 0) snprintf(year, sizeof(year), "%d a.C.", -f.year);
+  else snprintf(year, sizeof(year), "%d", f.year);
+  snprintf(txt, sizeof(txt), "Sabia que, na data de hoje em %s, %s", year, f.text);
+  if (withSound && !nightActive) sound::chime();
+  statusled::flash();
+  showMessage(txt, icons::A_BOOK, 1);
+  return true;
 }
 
 // -------------------------------------------------------------- sports
@@ -745,6 +775,7 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     publishAck("beep", true);
   } else if (strcmp(topic, "cmd/sync") == 0) {
     weatherDue = quotesDue = true;  // also refresh the internet data
+    factDue = true;
     const char* err = nullptr;
     JsonDocument r;
     r["action"] = "refresh";
@@ -777,7 +808,7 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
     runOta(url);
   } else if (strcmp(topic, "cmd/show") == 0) {
     // Show a screen now: payload "weather" | "rain" | "uv" | "sun" | "quotes" | "sports" |
-    // "date" | "longdate" (plain text or {"screen":"..."}).
+    // "date" | "longdate" | "fact" (plain text or {"screen":"..."}).
     JsonDocument doc;
     const char* what = payload;
     if (payload[0] == '{' && !deserializeJson(doc, payload)) what = doc["screen"] | "";
@@ -785,6 +816,13 @@ static void onMqttMessage(const char* topic, const char* payload, size_t len) {
         {"date", cfg::SB_DATE}, {"weather", cfg::SB_WEATHER}, {"rain", cfg::SB_RAIN},
         {"uv", cfg::SB_UV}, {"sun", cfg::SB_SUN}, {"quotes", cfg::SB_QUOTES},
         {"sports", cfg::SB_SPORTS}};
+    if (strcmp(what, "fact") == 0) {  // today's historical event
+      if (emergencyActive) { publishAck("show", false, "emergency alert active"); return; }
+      if (alarmActive) stopAlarm();
+      bool okF = showFact(false);
+      publishAck("show", okF, okF ? nullptr : "no data yet");
+      return;
+    }
     if (emergencyActive) { publishAck("show", false, "emergency alert active"); return; }
     if (alarmActive) stopAlarm();
     overlay = false;
@@ -1129,6 +1167,7 @@ static void printHelp() {
       "  ota <url>           install firmware from this project's GitHub Releases\n"
       "  alert <sec> <text>  emergency alert (touch to dismiss); 'alert 0' stops it [alerta]\n"
       "  sports              followed games and their status [jogos]\n"
+      "  fact                show today's historical event (Wikipedia) [fato]\n"
       "  test                play the hourly chime [teste]\n"
       "  wifireset           forget Wi-Fi and reboot into the setup portal"));
 }
@@ -1153,6 +1192,7 @@ static void runCommand(String line) {
   else if (cmd == "alerta") cmd = "alert";
   else if (cmd == "apresentacao") cmd = "intro";
   else if (cmd == "jogos") cmd = "sports";
+  else if (cmd == "fato") cmd = "fact";
 
   if (cmd == "help" || cmd == "?") { printHelp(); return; }
   if (cmd == "info") { printSettings(); return; }
@@ -1175,7 +1215,11 @@ static void runCommand(String line) {
     Serial.println(txt);
     return;
   }
-  if (cmd == "fetch") { weatherDue = quotesDue = true; return; }
+  if (cmd == "fetch") { weatherDue = quotesDue = factDue = true; return; }
+  if (cmd == "fact") {
+    if (!showFact(false)) Serial.println("No historical event yet (fetching).");
+    return;
+  }
   if (cmd == "msg") {
     static char msgBuf[160];
     strlcpy(msgBuf, arg.c_str(), sizeof(msgBuf));
@@ -1474,6 +1518,12 @@ void loop() {
         introStep = INTRO_WAIT;
       }
 
+      // "On this day": shown as soon as the screen is free (after a good morning, say).
+      if (cfg::s.fact && t.tm_hour == cfg::s.factHour && t.tm_min == cfg::s.factMin) {
+        factPending = true;
+        factPendingAt = millis();
+      }
+
       // Morning rain warning.
       const auto& w = feeds::weather;
       if (!morningNow && cfg::s.rainAlert && t.tm_hour == cfg::s.rainHour && t.tm_min == 0 &&
@@ -1484,6 +1534,19 @@ void loop() {
         sound::chime();
         showMessage(txt, icons::A_UMBRELLA, 3);
       }
+    }
+  }
+
+  // A pending "on this day" waits for the screen (and the data) for up to an hour.
+  if (factPending) {
+    const auto& f = feeds::fact;
+    bool today = ok && f.valid && f.month == t.tm_mon + 1 && f.day == t.tm_mday;
+    if (millis() - factPendingAt > 3600000UL || !cfg::s.fact) {
+      factPending = false;
+    } else if (today && !overlay && !display::isScrolling() && introStep == INTRO_DONE &&
+               !alarmActive && !emergencyActive) {
+      factPending = false;
+      showFact(true);
     }
   }
 
@@ -1506,6 +1569,13 @@ void loop() {
         nextQuotesAt = millis() + (okQ ? cfg::s.quotesMin * 60000UL : RETRY_MS);
         if (okQ) publishQuotes();
       }
+    } else if (cfg::s.fact && ok && (int32_t)(now - nextFactAt) >= 0 &&
+               (factDue || !feeds::fact.valid || feeds::fact.day != t.tm_mday ||
+                feeds::fact.month != t.tm_mon + 1)) {
+      factDue = false;  // once a day, and again on a new day
+      bool okF = feeds::fetchFact(t.tm_mon + 1, t.tm_mday);
+      nextFactAt = millis() + (okF ? 0 : RETRY_MS * 5);
+      if (okF) publishFact();
     } else {
       fetched = false;
     }

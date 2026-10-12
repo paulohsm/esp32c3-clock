@@ -547,6 +547,40 @@ constexpr Icon ARROW_DOWN_B = {
   0b00000000,
 };
 
+// Open book; a page turns.
+constexpr Icon BOOK = {
+  0b00000000,
+  0b01100110,
+  0b01011010,
+  0b01011010,
+  0b01011010,
+  0b01011010,
+  0b01111110,
+  0b00000000,
+};
+
+constexpr Icon BOOK_B = {
+  0b00000000,
+  0b01101000,
+  0b01011110,
+  0b01011010,
+  0b01011010,
+  0b01011010,
+  0b01111110,
+  0b00000000,
+};
+
+constexpr Icon BOOK_C = {
+  0b00000000,
+  0b01001110,
+  0b01111010,
+  0b01011010,
+  0b01011010,
+  0b01011010,
+  0b01111110,
+  0b00000000,
+};
+
 // Football (soccer) ball spinning; GOAL flashes it.
 constexpr Icon BALL = {
   0b00000000,
@@ -638,6 +672,8 @@ static const uint8_t* const A_UP_FRAMES[] = {ARROW_UP, ARROW_UP_B};
 constexpr Anim A_UP = {A_UP_FRAMES, 2, 300};
 static const uint8_t* const A_DOWN_FRAMES[] = {ARROW_DOWN, ARROW_DOWN_B};
 constexpr Anim A_DOWN = {A_DOWN_FRAMES, 2, 300};
+static const uint8_t* const A_BOOK_FRAMES[] = {BOOK, BOOK, BOOK_B, BOOK_C};
+constexpr Anim A_BOOK = {A_BOOK_FRAMES, 4, 300};
 static const uint8_t* const A_BALL_FRAMES[] = {BALL, BALL_B};
 constexpr Anim A_BALL = {A_BALL_FRAMES, 2, 400};
 static const uint8_t* const A_GOAL_FRAMES[] = {BALL, BLANK};

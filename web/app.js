@@ -225,6 +225,7 @@ function onMessage(topic, buf) {
     case 'schedules': dev.schedules = Array.isArray(data) ? data : []; break;
     case 'data/weather': dev.weather = data && data.valid ? data : null; break;
     case 'data/quotes': dev.quotes = data || {}; break;
+    case 'data/fact': dev.fact = data && data.valid ? data : null; break;
     case 'alert': dev.alert = data; break;
     case 'sports': dev.sports = data; syncSofaTeams(id); break;
     case 'ack':
@@ -327,6 +328,9 @@ function renderConfig(c) {
       cb.checked = (mask >> Number(cb.dataset.bit)) & 1;
     }
   }
+  if (c.factHour != null && document.activeElement !== $('#factTime')) {
+    $('#factTime').value = `${String(c.factHour).padStart(2, '0')}:${String(c.factMin).padStart(2, '0')}`;
+  }
   if (c.morningHour != null && document.activeElement !== $('#morningTime')) {
     $('#morningTime').value = `${String(c.morningHour).padStart(2, '0')}:${String(c.morningMin).padStart(2, '0')}`;
   }
@@ -362,6 +366,10 @@ function renderNow(d) {
     const pct = el('span', { class: q.pct >= 0 ? 'up' : 'down' },
       ` ${q.pct >= 0 ? '▲' : '▼'} ${fmtNum(Math.abs(q.pct), 2)}%`);
     row(QUOTE_NAMES[code], `R$ ${fmtNum(q.bid, digits)}`, pct);
+  }
+  if (d.fact) {
+    const y = d.fact.year < 0 ? `${-d.fact.year} a.C.` : d.fact.year;
+    row('Hoje na história', `${y}: ${d.fact.text}`);
   }
   const at = [w && w.at, ...Object.values(d.quotes || {}).map((q) => q.at)].filter(Boolean);
   if (at.length) {
@@ -962,6 +970,10 @@ function wire() {
   $('#spFollowTeam').addEventListener('click', followTeam);
   $('#updateBtn').addEventListener('click', startUpdate);
   $('#checkBtn').addEventListener('click', () => checkUpdate(true));
+  $('#factTime').addEventListener('change', () => {
+    const [h, m] = $('#factTime').value.split(':').map(Number);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) publish('config/set', { factHour: h, factMin: m });
+  });
   $('#morningTime').addEventListener('change', () => {
     const [h, m] = $('#morningTime').value.split(':').map(Number);
     if (!Number.isNaN(h) && !Number.isNaN(m)) publish('config/set', { morningHour: h, morningMin: m });
