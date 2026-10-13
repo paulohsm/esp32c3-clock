@@ -2,18 +2,41 @@
 # Builds the firmware and publishes it as a GitHub Release, so clocks can update
 # themselves from the app ("Atualizar firmware").
 #
-# Usage:  tools/release.sh
+# The release notes come from this version's section in CHANGELOG.md (the app
+# shows them before updating); the script stops if the section is missing.
+#
+# Usage:  tools/release.sh               build and publish FW_VERSION
+#         tools/release.sh --sync-notes  copy CHANGELOG.md into every published release
 # Needs:  PlatformIO, and the GitHub CLI (gh) logged in as the repo owner.
 #         Without gh, it prints the steps to publish through the website.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+REPO=paulohsm/esp32c3-clock
+
+if [ "${1:-}" = "--sync-notes" ]; then
+  for TAG in $(gh release list --repo "$REPO" --limit 100 --json tagName --jq '.[].tagName'); do
+    if NOTES=$(bash tools/notes.sh "${TAG#v}" 2>/dev/null); then
+      gh release edit "$TAG" --repo "$REPO" --notes "$NOTES" >/dev/null && echo "$TAG: notes updated"
+    else
+      echo "$TAG: no section in CHANGELOG.md, left as is"
+    fi
+  done
+  exit 0
+fi
 
 VERSION=$(grep -oP '#define FW_VERSION "\K[0-9.]+' firmware/src/main.cpp)
 TAG="v$VERSION"
 BIN=firmware/.pio/build/supermini/firmware.bin
 echo "Firmware version: $VERSION"
 
-REPO=paulohsm/esp32c3-clock
+# Notes first, so a release never goes out without them.
+if ! NOTES=$(bash tools/notes.sh "$VERSION"); then
+  echo "Write what changed under '## $TAG — DD/MM/AAAA' at the top of CHANGELOG.md, commit, and run again." >&2
+  exit 1
+fi
+echo "Release notes:"
+printf '%s\n\n' "$NOTES"
+
 HAVE_GH=false
 if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then HAVE_GH=true; fi
 
@@ -38,7 +61,8 @@ Publish the release through the website (logged in as the repo owner):
   1. Open https://github.com/paulohsm/esp32c3-clock/releases/new
   2. Tag: $TAG (pick it if it already exists, or create it), title: $TAG
   3. Attach: $(pwd)/$BIN   (the file must be named firmware.bin)
-  4. Click "Publish release".
+  4. Description: paste the release notes printed above.
+  5. Click "Publish release".
 MSG
 }
 
@@ -50,7 +74,7 @@ fi
 
 if $HAVE_GH &&
    gh release create "$TAG" "$BIN" --repo "$REPO" \
-     --title "$TAG" --notes "Firmware $VERSION"; then
+     --title "$TAG" --notes "$NOTES"; then
   echo "Published $TAG. The app will offer it within 6 h, or at once with 'Verificar atualização'."
 else
   echo "Could not publish with gh (not installed, not logged in, or no permission)."

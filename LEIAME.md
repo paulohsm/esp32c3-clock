@@ -181,9 +181,9 @@ O app é publicado no GitHub Pages pelo arquivo `.github/workflows/pages.yml`, a
 
 A divisão da memória (`min_spiffs.csv`) tem duas áreas para o programa, e por isso o relógio consegue instalar um firmware novo pelo Wi-Fi. A troca da divisão exige uma gravação pelo cabo USB na primeira vez. Depois disso:
 
-1. Aumente `FW_VERSION` em `firmware/src/main.cpp` (por exemplo, `1.0.1`) e faça o commit.
-2. Rode `tools/release.sh`. Ele compila e publica o `firmware.bin` como uma Release `v1.0.1` no GitHub (com o `gh` logado como dono do repositório), ou mostra os passos para publicar pelo site.
-3. No app, a aba **Info** mostra "Atualização disponível". A verificação acontece ao abrir o app, a cada 6 horas ou pelo botão "Verificar atualização". Toque em **Atualizar firmware**: o relógio baixa o arquivo, mostra o progresso e reinicia.
+1. Aumente `FW_VERSION` em `firmware/src/main.cpp` (por exemplo, `1.0.1`), escreva o que mudou sob `## v1.0.1 — DD/MM/AAAA` no topo do `CHANGELOG.md` e faça o commit.
+2. Rode `tools/release.sh`. Ele compila e publica o `firmware.bin` como uma Release `v1.0.1` no GitHub, com essa seção do `CHANGELOG.md` como notas (com o `gh` logado como dono do repositório), ou mostra os passos para publicar pelo site. Se o `CHANGELOG.md` não tiver a seção da versão, o script para sem publicar. Depois de editar seções antigas, `tools/release.sh --sync-notes` copia as notas para as Releases já publicadas.
+3. No app, a aba **Info** mostra "Atualização disponível". A verificação acontece ao abrir o app, a cada 6 horas ou pelo botão "Verificar atualização". Em "Novidades" aparece o que muda em cada versão que o relógio vai receber. Toque em **Atualizar firmware**: o relógio baixa o arquivo, mostra o progresso e reinicia.
 
 ## Ícones
 

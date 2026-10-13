@@ -53,6 +53,7 @@ let client = null;
 const devices = {};      // id -> { online, info, config, schedules, weather, quotes }
 let current = null;      // selected device id
 let latest = null;       // newest release: { version, url, notes } (null = unknown)
+let releases = [];       // every firmware release, newest first: { version, url, notes, date }
 let updateState = '';    // '' | 'checking' | 'error' | 'installing'
 let installingFrom = null;  // firmware version the clock had when we asked it to update
 
@@ -296,6 +297,7 @@ function openDevice(id) {
 function selectTab(name) {
   for (const b of $$('.tabs button')) b.classList.toggle('active', b.dataset.tab === name);
   for (const p of $$('[data-panel]')) p.hidden = p.dataset.panel !== name;
+  window.scrollTo(0, 0);  // each tab starts at its top (the tab bar stays at the bottom)
 }
 
 function renderDevice(kind) {
@@ -784,21 +786,90 @@ async function checkUpdate(manual = false) {
   updateState = 'checking';
   renderUpdate();
   try {
-    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`,
+    // The whole list, not just the latest: a clock several versions behind shows
+    // the notes of every version it is about to get.
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=50`,
       { headers: { Accept: 'application/vnd.github+json' } });
-    if (r.status === 404) { latest = { version: '0.0.0' }; updateState = ''; renderUpdate(); return; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const rel = await r.json();
-    const asset = (rel.assets || []).find((a) => a.name === 'firmware.bin');
-    latest = asset
-      ? { version: rel.tag_name.replace(/^v/, ''), url: asset.browser_download_url, notes: rel.name || rel.tag_name }
-      : { version: '0.0.0' };
+    releases = (await r.json())
+      .filter((rel) => !rel.draft && !rel.prerelease)
+      .map((rel) => {
+        const asset = (rel.assets || []).find((a) => a.name === 'firmware.bin');
+        return asset && {
+          version: rel.tag_name.replace(/^v/, ''),
+          url: asset.browser_download_url,
+          notes: rel.body || '',
+          date: rel.published_at,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => cmpVersion(b.version, a.version));
+    latest = releases[0] || { version: '0.0.0' };
     updateState = '';
     if (manual && !updateAvailable()) toast('O firmware já está na versão mais recente.');
   } catch (e) {
     updateState = 'error';
   }
   renderUpdate();
+}
+
+// Release notes are a small piece of Markdown: "- " items, "**bold**", plain lines.
+function inlineMd(el, text) {
+  text.split(/\*\*(.+?)\*\*/).forEach((part, i) => {
+    if (!part) return;
+    if (i % 2) { const b = document.createElement('strong'); b.textContent = part; el.append(b); }
+    else el.append(part);
+  });
+}
+
+function notesBlock(rel) {
+  const frag = document.createDocumentFragment();
+  const h = document.createElement('h4');
+  h.textContent = `v${rel.version} `;
+  if (rel.date) {
+    const small = document.createElement('small');
+    small.textContent = new Date(rel.date).toLocaleDateString('pt-BR');
+    h.append(small);
+  }
+  frag.append(h);
+  let list = null;
+  const lines = rel.notes.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) lines.push('Sem notas para esta versão.');
+  for (const line of lines) {
+    if (/^[-*] /.test(line)) {
+      if (!list) { list = document.createElement('ul'); frag.append(list); }
+      const li = document.createElement('li');
+      inlineMd(li, line.slice(2));
+      list.append(li);
+    } else {
+      list = null;
+      const p = document.createElement('p');
+      inlineMd(p, line.replace(/^#+\s*/, ''));
+      frag.append(p);
+    }
+  }
+  return frag;
+}
+
+// "Novidades": what the update brings (every version newer than the clock's),
+// or, when up to date, what the installed version brought.
+function renderNotes(fw, avail) {
+  const box = $('#notesBox');
+  const body = $('#notesBody');
+  let shown = [];
+  if (fw && avail) shown = releases.filter((rel) => cmpVersion(rel.version, fw) > 0);
+  else if (fw) shown = releases.filter((rel) => cmpVersion(rel.version, fw) === 0);
+  box.hidden = !shown.length;
+  if (!shown.length) return;
+  $('#notesTitle').textContent = avail
+    ? (shown.length > 1 ? `Novidades das ${shown.length} versões novas` : `Novidades da v${shown[0].version}`)
+    : `O que mudou na v${fw}`;
+  const key = shown.map((rel) => rel.version).join(',');
+  if (box.dataset.key !== key) {
+    box.dataset.key = key;
+    body.replaceChildren(...shown.map(notesBlock));
+    box.open = avail;  // open by default only when there is something to install
+  }
 }
 
 function updateAvailable(d = devices[current]) {
@@ -827,6 +898,7 @@ function renderUpdate() {
     return;
   }
   btn.hidden = !avail;
+  renderNotes(fw, avail);
   if (updateState === 'checking') text.textContent = 'Verificando atualizações…';
   else if (updateState === 'error') text.textContent = 'Não foi possível consultar o GitHub. Tente de novo mais tarde.';
   else if (!latest) text.textContent = 'Verificando atualizações…';

@@ -16,6 +16,18 @@
   <script src="app.js" defer></script>
 </head>
 <body>
+  <!-- Tab icons (drawn once, reused with <use>) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4 5h16v11H10l-5 4v-4H4z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+      <symbol id="i-sched" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4.2l2.8 1.8M4.5 5.5 7 3.5M19.5 5.5 17 3.5"/></symbol>
+      <symbol id="i-sports" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8.2l3.3 2.4-1.3 3.9h-4l-1.3-3.9z"/><path d="M12 3v5.2M15.3 10.6l5.2-1.6M14 14.5l3.2 4.6M10 14.5l-3.2 4.6M8.7 10.6 3.5 9"/></symbol>
+      <symbol id="i-cfg" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.4"/></symbol>
+      <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.4M12 17.2v.4"/></symbol>
+    </defs>
+  </svg>
+
   <header class="topbar">
     <button id="backBtn" class="icon-btn" hidden aria-label="Voltar">‹</button>
     <h1 id="title">Relógio</h1>
@@ -51,12 +63,14 @@
 
     <!-- Clock detail -->
     <section id="deviceView" class="view" hidden>
+      <!-- Bottom tab bar (fixed): icons only; the Help tab explains them -->
       <nav class="tabs" role="tablist">
-        <button data-tab="msg" class="active">Mensagem</button>
-        <button data-tab="sched">Agenda</button>
-        <button data-tab="sports">Jogos</button>
-        <button data-tab="cfg">Ajustes</button>
-        <button data-tab="info">Info</button>
+        <button data-tab="msg" class="active" aria-label="Mensagem" title="Mensagem"><svg class="ico"><use href="#i-msg"/></svg></button>
+        <button data-tab="sched" aria-label="Agenda" title="Agenda"><svg class="ico"><use href="#i-sched"/></svg></button>
+        <button data-tab="sports" aria-label="Jogos" title="Jogos"><svg class="ico"><use href="#i-sports"/></svg></button>
+        <button data-tab="cfg" aria-label="Ajustes" title="Ajustes"><svg class="ico"><use href="#i-cfg"/></svg></button>
+        <button data-tab="info" aria-label="Info" title="Info"><svg class="ico"><use href="#i-info"/></svg></button>
+        <button data-tab="help" aria-label="Ajuda" title="Ajuda"><svg class="ico"><use href="#i-help"/></svg></button>
       </nav>
 
       <div id="offlineBanner" class="banner" hidden>Relógio offline: os comandos serão perdidos.</div>
@@ -385,9 +399,112 @@
         <div class="card update-card" id="updateCard">
           <h3>Firmware</h3>
           <p id="updateText" class="muted">Verificando atualizações…</p>
+          <details id="notesBox" class="notes" hidden>
+            <summary id="notesTitle">Novidades</summary>
+            <div id="notesBody"></div>
+            <a href="https://github.com/paulohsm/esp32c3-clock/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Histórico de todas as versões</a>
+          </details>
           <button id="updateBtn" hidden>Atualizar firmware</button>
           <button id="checkBtn" type="button">Verificar atualização</button>
         </div>
+      </div>
+
+      <!-- Help -->
+      <div data-panel="help" class="panel help" hidden>
+        <div class="card">
+          <h3>As abas</h3>
+          <ul class="legend">
+            <li><svg class="ico"><use href="#i-msg"/></svg><span><strong>Mensagem</strong>: mandar um texto para o relógio, disparar o alerta de emergência e mostrar uma tela na hora.</span></li>
+            <li><svg class="ico"><use href="#i-sched"/></svg><span><strong>Agenda</strong>: lembretes e alarmes, uma vez ou repetindo em dias da semana.</span></li>
+            <li><svg class="ico"><use href="#i-sports"/></svg><span><strong>Jogos</strong>: seguir times e jogos, com avisos e placar.</span></li>
+            <li><svg class="ico"><use href="#i-cfg"/></svg><span><strong>Ajustes</strong>: tudo o que se configura no relógio.</span></li>
+            <li><svg class="ico"><use href="#i-info"/></svg><span><strong>Info</strong>: dados de agora, estado do relógio e atualização do firmware. Um ponto verde nesse ícone avisa que há atualização; em "Novidades" você vê o que muda antes de instalar.</span></li>
+            <li><svg class="ico"><use href="#i-help"/></svg><span><strong>Ajuda</strong>: esta página.</span></li>
+          </ul>
+        </div>
+
+        <details class="card">
+          <summary>Primeiro uso e rede Wi-Fi</summary>
+          <ol>
+            <li>Ligue o relógio na tomada. Na primeira vez, a tela mostra <code>WIFI</code> e o LED azul fica aceso.</li>
+            <li>No celular, entre na rede <strong>Relogio-Config</strong> (senha <code>relogio123</code>).</li>
+            <li>Escolha a rede da casa e digite a senha. Se a página não abrir sozinha, acesse <code>192.168.4.1</code>.</li>
+            <li>O relógio reinicia, acerta a hora pela internet e aparece neste app.</li>
+          </ol>
+          <p class="muted">Para trocar de rede depois: mantenha o dedo no sensor de toque enquanto liga o relógio.</p>
+        </details>
+
+        <details class="card">
+          <summary>No próprio relógio</summary>
+          <ul>
+            <li><strong>Toque curto:</strong> passa para a próxima tela (data, tempo, chuva, UV, sol, jogos, cotações). Cada tela volta sozinha para a hora em 10 segundos.</li>
+            <li><strong>Toque duplo:</strong> mostra nome, IP, sinal do Wi-Fi, conexão (MQTT), código e versão do relógio.</li>
+            <li><strong>Toque longo:</strong> liga ou desliga o bipe de cada hora.</li>
+            <li><strong>Durante um alarme ou alerta:</strong> qualquer toque desliga.</li>
+            <li><strong>Wi-Fi cortado piscando</strong> no lugar do ícone da hora: o relógio está sem internet.</li>
+          </ul>
+          <p class="muted">LED azul: piscando rápido, procurando o Wi-Fi; piscando devagar, esperando a hora ou a conexão; apagado, tudo certo; aceso direto, modo de configuração do Wi-Fi.</p>
+        </details>
+
+        <details class="card">
+          <summary>Mensagem</summary>
+          <ul>
+            <li><strong>Mensagem:</strong> o texto rola na tela, com bipe se marcado, e pode repetir. Os botões de expressão inserem carinhas que aparecem bem na matriz.</li>
+            <li><strong>Alerta de emergência:</strong> texto sem parar, ícone piscando e sirene no volume máximo, até alguém tocar no sensor, o tempo acabar ou você cancelar aqui.</li>
+            <li><strong>Mostrar agora:</strong> exibe na hora a tela escolhida (data, tempo, cotações, jogos, fato histórico...).</li>
+          </ul>
+        </details>
+
+        <details class="card">
+          <summary>Agenda</summary>
+          <ul>
+            <li><strong>Mensagem</strong> rola o texto uma vez com bipe; <strong>alarme</strong> toca e rola até alguém tocar no sensor (ou por 1 minuto).</li>
+            <li><strong>Quando:</strong> uma vez no próximo horário, em uma data, ou repetindo nos dias marcados.</li>
+            <li>Para apagar, use o botão ao lado de cada item.</li>
+          </ul>
+        </details>
+
+        <details class="card">
+          <summary>Jogos</summary>
+          <ul>
+            <li>Digite o nome do time (por exemplo, Ferroviário, Brasil, Lakers), toque em <strong>Buscar</strong> e em <strong>Escolher</strong>. Depois, siga todos os jogos do time ou só um jogo da lista.</li>
+            <li><strong>Placar ao vivo</strong> (dados da ESPN): o relógio busca sozinho o próximo jogo e o placar minuto a minuto. No futebol, vale para todas as competições, amistosos incluídos.</li>
+            <li><strong>Só agenda</strong> (dados do Sofascore): times menores. O relógio recebe o próximo jogo sempre que você abre este app, avisa antes e no início, mas não mostra o placar.</li>
+            <li>Os avisos (antes do jogo, início, gols, placar final, som) e a tela "Jogos" se ajustam no fim da aba.</li>
+          </ul>
+        </details>
+
+        <details class="card">
+          <summary>Ajustes</summary>
+          <ul>
+            <li><strong>Geral:</strong> nome, apresentação ao ligar, mensagem de boas-vindas, brilho e tela invertida.</li>
+            <li><strong>Ícone da hora:</strong> mostrador do dia, relógio de ponteiros ou ampulheta animada.</li>
+            <li><strong>Movimento:</strong> animações, velocidade do texto e carrossel automático de telas.</li>
+            <li><strong>Som:</strong> bipe de cada hora, toque e volume (o botão "Ouvir" toca no relógio).</li>
+            <li><strong>Localização:</strong> pelo GPS do celular, para a previsão do tempo.</li>
+            <li><strong>Telas do toque, Cotações e Atualização:</strong> o que aparece no toque e de quanto em quanto tempo os dados são buscados.</li>
+            <li><strong>Bom dia diário, Hoje na história e Aviso de chuva:</strong> mensagens automáticas em horários escolhidos.</li>
+            <li><strong>Modo noite:</strong> brilho mínimo e sem bipes no horário escolhido.</li>
+          </ul>
+        </details>
+
+        <details class="card">
+          <summary>Info e atualização</summary>
+          <ul>
+            <li><strong>Agora:</strong> tempo, cotações e o fato histórico do dia. "Atualizar dados" pede ao relógio para buscar tudo de novo.</li>
+            <li><strong>Estado:</strong> conexão, versão, Wi-Fi e há quanto tempo o relógio está ligado.</li>
+            <li><strong>Firmware:</strong> quando há versão nova, aparece "Atualizar firmware". O relógio baixa, mostra a porcentagem e reinicia sozinho. Não desligue durante a atualização.</li>
+            <li>Se o relógio aparecer offline, os comandos não chegam até ele: confira o Wi-Fi da casa ou desligue e ligue o relógio.</li>
+          </ul>
+        </details>
+
+        <details class="card">
+          <summary>De onde vêm os dados</summary>
+          <ul>
+            <li>Tempo: Open-Meteo. Cotações: AwesomeAPI. Jogos: ESPN e Sofascore. Hoje na história: Wikipédia.</li>
+            <li>O relógio conversa com este app pela internet (serviço HiveMQ), por isso funciona de qualquer lugar.</li>
+          </ul>
+        </details>
       </div>
     </section>
   </main>

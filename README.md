@@ -164,9 +164,9 @@ It is published to GitHub Pages by `.github/workflows/pages.yml` on every push t
 
 The partition table (`min_spiffs.csv`) has two app slots, so the clock can install a new firmware over Wi-Fi. Changing the table the first time needs one USB flash; after that:
 
-1. Bump `FW_VERSION` in `firmware/src/main.cpp` (e.g. `1.0.1`) and commit.
-2. Run `tools/release.sh`. It builds and publishes the `firmware.bin` as a GitHub Release `v1.0.1` (with `gh` logged in as the repo owner), or prints the steps to do it on the website.
-3. In the app, **Info** shows "Atualização disponível" (checked on open and every 6 h, or with "Verificar atualização"). Tap **Atualizar firmware**: the clock downloads it, shows the progress and reboots.
+1. Bump `FW_VERSION` in `firmware/src/main.cpp` (e.g. `1.0.1`), write what changed under `## v1.0.1 — DD/MM/AAAA` at the top of `CHANGELOG.md` (in Portuguese, for the app's users), and commit.
+2. Run `tools/release.sh`. It builds and publishes the `firmware.bin` as a GitHub Release `v1.0.1` with that section as its notes (with `gh` logged in as the repo owner), or prints the steps to do it on the website. It stops if the changelog has no section for the version. After editing older sections, `tools/release.sh --sync-notes` copies them into the published releases.
+3. In the app, **Info** shows "Atualização disponível" (checked on open and every 6 h, or with "Verificar atualização"). "Novidades" lists the changes of every version the clock is about to get. Tap **Atualizar firmware**: the clock downloads it, shows the progress and reboots.
 
 ## Icons
 
